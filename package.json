@@ -1,0 +1,17 @@
+{
+  "name": "ponto-certo-chatbot",
+  "version": "1.0.0",
+  "description": "Chatbot IA da Ponto Certo Informática - WhatsApp via Uazapi + OpenAI",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "openai": "^4.70.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
