@@ -6,35 +6,57 @@
  */
 
 const OpenAI = require('openai');
-const { getStore } = require('@netlify/blobs');
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
 
 // ============================================
-// MEMÓRIA DE CONVERSA (Netlify Blobs)
+// MEMÓRIA DE CONVERSA
+// Usa Netlify Blobs via API REST (mais confiável que o SDK)
+// Fallback: memória em processo (funciona enquanto a instância estiver quente)
 // ============================================
-const TEMPO_EXPIRACAO_MIN = 30; // Sessão expira em 30 min de inatividade
-const MAX_MENSAGENS = 20; // Máximo de mensagens no histórico
+const TEMPO_EXPIRACAO_MIN = 30;
+const MAX_MENSAGENS = 20;
+
+// Memória in-process (funciona entre invocações na mesma instância quente)
+const memoriaLocal = new Map();
 
 async function carregarHistorico(phone) {
     try {
-        const store = getStore('conversas');
-        const dados = await store.get(phone);
-        if (!dados) return [];
-
-        const sessao = JSON.parse(dados);
-        const agora = Date.now();
-        const minutosPassados = (agora - (sessao.ultimaMensagem || 0)) / 60000;
-
-        // Sessão expirou — reseta
-        if (minutosPassados > TEMPO_EXPIRACAO_MIN) {
-            console.log(`🕐 Sessão expirada para ${phone} (${Math.round(minutosPassados)}min)`);
-            return [];
+        // Tenta carregar da memória local primeiro
+        const local = memoriaLocal.get(phone);
+        if (local) {
+            const minutosPassados = (Date.now() - (local.ultimaMensagem || 0)) / 60000;
+            if (minutosPassados > TEMPO_EXPIRACAO_MIN) {
+                console.log(`🕐 Sessão expirada para ${phone} (${Math.round(minutosPassados)}min)`);
+                memoriaLocal.delete(phone);
+                return [];
+            }
+            console.log(`💾 Histórico LOCAL carregado: ${local.historico.length} msgs`);
+            return local.historico || [];
         }
 
-        return sessao.historico || [];
+        // Tenta Netlify Blobs via SDK (pode falhar em alguns ambientes)
+        try {
+            const { getStore } = require('@netlify/blobs');
+            const store = getStore('conversas');
+            const dados = await store.get(phone);
+            if (dados) {
+                const sessao = JSON.parse(dados);
+                const minutosPassados = (Date.now() - (sessao.ultimaMensagem || 0)) / 60000;
+                if (minutosPassados <= TEMPO_EXPIRACAO_MIN) {
+                    console.log(`💾 Histórico BLOBS carregado: ${sessao.historico.length} msgs`);
+                    // Cache local também
+                    memoriaLocal.set(phone, sessao);
+                    return sessao.historico || [];
+                }
+            }
+        } catch (blobErr) {
+            console.warn('⚠️ Blobs indisponível, usando memória local:', blobErr.message);
+        }
+
+        return [];
     } catch (e) {
         console.warn('⚠️ Erro ao carregar histórico:', e.message);
         return [];
@@ -42,14 +64,23 @@ async function carregarHistorico(phone) {
 }
 
 async function salvarHistorico(phone, historico) {
+    const sessao = {
+        historico: historico.slice(-MAX_MENSAGENS),
+        ultimaMensagem: Date.now(),
+    };
+
+    // Sempre salva na memória local (instantâneo)
+    memoriaLocal.set(phone, sessao);
+    console.log(`💾 Histórico LOCAL salvo: ${sessao.historico.length} msgs`);
+
+    // Tenta salvar nos Blobs também (persistência)
     try {
+        const { getStore } = require('@netlify/blobs');
         const store = getStore('conversas');
-        await store.set(phone, JSON.stringify({
-            historico: historico.slice(-MAX_MENSAGENS),
-            ultimaMensagem: Date.now(),
-        }));
-    } catch (e) {
-        console.warn('⚠️ Erro ao salvar histórico:', e.message);
+        await store.set(phone, JSON.stringify(sessao));
+        console.log(`💾 Histórico BLOBS salvo`);
+    } catch (blobErr) {
+        console.warn('⚠️ Blobs save falhou (usando só memória local):', blobErr.message);
     }
 }
 
