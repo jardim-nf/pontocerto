@@ -132,8 +132,8 @@ async function sendWhatsAppMessage(phone, message) {
             'token': process.env.UAZAPI_TOKEN,
         },
         body: JSON.stringify({
-            phone: phone,
-            message: message,
+            number: phone,
+            text: message,
         }),
     });
 
@@ -147,6 +147,7 @@ async function sendWhatsAppMessage(phone, message) {
 
 // ============================================
 // NETLIFY FUNCTION HANDLER
+// Parser baseado no MataFome (produção comprovada)
 // ============================================
 exports.handler = async (event) => {
     // Só aceita POST
@@ -160,49 +161,112 @@ exports.handler = async (event) => {
     try {
         const body = JSON.parse(event.body || '{}');
 
-        // Extrai dados da mensagem (formato Uazapi)
-        const key = body?.key || body?.data?.key || {};
-        const messageData = body?.message || body?.data?.message || {};
+        // DEBUG: Log completo do payload da Uazapi
+        console.log('📦 PAYLOAD COMPLETO:', JSON.stringify(body, null, 2));
+        console.log('📦 CHAVES DO BODY:', Object.keys(body));
 
-        // Verifica se é mensagem válida
-        const fromMe = key.fromMe;
-        const remoteJid = key.remoteJid || '';
-        const isGroup = remoteJid.includes('@g.us');
+        // ================================================================
+        // PARSER UNIVERSAL UAZAPI — 3 formatos comprovados
+        // Copiado do MataFome (webhookBotPedidos) que funciona em produção
+        // ================================================================
+        let telefone = '';
+        let mensagemTexto = '';
+        let fromMe = false;
 
-        // Ignora: mensagens próprias e grupos
-        if (fromMe || isGroup) {
-            return {
-                statusCode: 200,
-                body: JSON.stringify({ status: 'ignored' }),
-            };
+        if (body.BaseUrl) {
+            // ═══ FORMATO A — meunumero.uazapi.com (formato principal) ═══
+            const msgArr = body.messages || (body.message ? [body.message] : []);
+            const msg = msgArr[0] || {};
+
+            telefone = msg?.key?.remoteJid
+                || msg?.remoteJid
+                || body?.phone
+                || body?.sender
+                || body?.from
+                || body?.chat?.phone
+                || body?.chat?.number
+                || '';
+
+            mensagemTexto = msg?.message?.conversation
+                || msg?.message?.extendedTextMessage?.text
+                || msg?.text || msg?.body
+                || body?.text || body?.body || body?.content || '';
+
+            fromMe = msg?.key?.fromMe ?? msg?.fromMe ?? body?.fromMe ?? false;
+
+            console.log('📋 FORMATO A (BaseUrl) detectado');
+
+        } else if (body?.event === 'messages.upsert' || body?.data?.key) {
+            // ═══ FORMATO B — evento messages.upsert com wrapper data ═══
+            const msgData = body.data || {};
+
+            telefone = msgData?.key?.remoteJid || '';
+            mensagemTexto = msgData?.message?.conversation
+                || msgData?.message?.extendedTextMessage?.text || '';
+            fromMe = msgData?.key?.fromMe || false;
+
+            console.log('📋 FORMATO B (data.key / messages.upsert) detectado');
+
+        } else if (body?.key?.remoteJid) {
+            // ═══ FORMATO C — Baileys legado direto ═══
+            telefone = body.key.remoteJid;
+            mensagemTexto = body?.message?.conversation
+                || body?.message?.extendedTextMessage?.text || '';
+            fromMe = body.key.fromMe || false;
+
+            console.log('📋 FORMATO C (key.remoteJid legado) detectado');
+
+        } else {
+            // ═══ FORMATO DESCONHECIDO — tenta extrair qualquer coisa ═══
+            telefone = body?.from || body?.phone || body?.number || body?.sender || '';
+            mensagemTexto = body?.text || body?.message || body?.body || body?.msg || '';
+            fromMe = body?.fromMe === true;
+
+            console.log('📋 FORMATO DESCONHECIDO — tentando fallback');
         }
 
-        // Extrai texto
-        const text = messageData.conversation
-            || messageData.extendedTextMessage?.text
-            || messageData.buttonsResponseMessage?.selectedButtonId
-            || messageData.listResponseMessage?.singleSelectReply?.selectedRowId
-            || '';
+        // Limpar telefone: remover @s.whatsapp.net, @c.us, e caracteres não numéricos
+        telefone = String(telefone).replace(/@[\w.]+/g, '').replace(/[^0-9]/g, '');
+        mensagemTexto = String(mensagemTexto || '').trim();
 
-        if (!text.trim()) {
-            return {
-                statusCode: 200,
-                body: JSON.stringify({ status: 'ignored', reason: 'no_text' }),
-            };
+        // Detectar grupo
+        const isGroup = String(body?.key?.remoteJid || body?.data?.key?.remoteJid || '').includes('@g.us');
+
+        console.log(`🔍 PARSED: fromMe=${fromMe}, telefone=${telefone}, texto="${mensagemTexto}", isGroup=${isGroup}`);
+
+        // Ignorar: mensagens próprias, grupos, sem telefone/texto
+        if (fromMe) {
+            console.log('⏭️ IGNORADO: fromMe=true (mensagem do próprio bot)');
+            return { statusCode: 200, body: JSON.stringify({ status: 'ignored', reason: 'fromMe' }) };
         }
 
-        // Extrai telefone e nome
-        const phone = remoteJid.replace('@s.whatsapp.net', '');
-        const pushName = body.pushName || body.data?.pushName || 'Cliente';
+        if (isGroup) {
+            console.log('⏭️ IGNORADO: mensagem de grupo');
+            return { statusCode: 200, body: JSON.stringify({ status: 'ignored', reason: 'group' }) };
+        }
 
-        console.log(`📩 ${pushName} (${phone}): ${text}`);
+        if (!telefone || telefone.length < 8) {
+            console.log(`⏭️ IGNORADO: telefone inválido (${telefone})`);
+            return { statusCode: 200, body: JSON.stringify({ status: 'ignored', reason: 'no_phone' }) };
+        }
+
+        if (!mensagemTexto) {
+            console.log('⏭️ IGNORADO: sem texto');
+            return { statusCode: 200, body: JSON.stringify({ status: 'ignored', reason: 'no_text' }) };
+        }
+
+        // Garantir formato do telefone para envio (com 55)
+        const phoneFinal = telefone.startsWith('55') ? telefone : `55${telefone}`;
+        const pushName = body?.pushName || body?.data?.pushName || 'Cliente';
+
+        console.log(`📩 ${pushName} (${phoneFinal}): ${mensagemTexto}`);
 
         // Processa com OpenAI
         const completion = await openai.chat.completions.create({
             model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
             messages: [
                 { role: 'system', content: getSystemPrompt() },
-                { role: 'user', content: `O nome do cliente é ${pushName}. A mensagem dele é: ${text}` },
+                { role: 'user', content: `O nome do cliente é ${pushName}. A mensagem dele é: ${mensagemTexto}` },
             ],
             max_tokens: 500,
             temperature: 0.7,
@@ -211,10 +275,12 @@ exports.handler = async (event) => {
         const reply = completion.choices[0]?.message?.content
             || 'Desculpe, tive um problema técnico. Pode repetir? 😊';
 
-        console.log(`🤖 Resposta: ${reply.substring(0, 80)}...`);
+        console.log(`🤖 Resposta: ${reply.substring(0, 100)}...`);
 
         // Envia resposta no WhatsApp
-        await sendWhatsAppMessage(phone, reply);
+        await sendWhatsAppMessage(phoneFinal, reply);
+
+        console.log(`✅ Mensagem enviada para ${phoneFinal}`);
 
         return {
             statusCode: 200,
@@ -223,8 +289,9 @@ exports.handler = async (event) => {
 
     } catch (error) {
         console.error('❌ Erro:', error.message);
+        console.error('❌ Stack:', error.stack);
         return {
-            statusCode: 200, // Retorna 200 pra Uazapi não ficar retentando
+            statusCode: 200,
             body: JSON.stringify({ status: 'error', message: error.message }),
         };
     }
