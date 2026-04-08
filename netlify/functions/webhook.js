@@ -6,10 +6,52 @@
  */
 
 const OpenAI = require('openai');
+const { getStore } = require('@netlify/blobs');
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
+
+// ============================================
+// MEMÓRIA DE CONVERSA (Netlify Blobs)
+// ============================================
+const TEMPO_EXPIRACAO_MIN = 30; // Sessão expira em 30 min de inatividade
+const MAX_MENSAGENS = 20; // Máximo de mensagens no histórico
+
+async function carregarHistorico(phone) {
+    try {
+        const store = getStore('conversas');
+        const dados = await store.get(phone);
+        if (!dados) return [];
+
+        const sessao = JSON.parse(dados);
+        const agora = Date.now();
+        const minutosPassados = (agora - (sessao.ultimaMensagem || 0)) / 60000;
+
+        // Sessão expirou — reseta
+        if (minutosPassados > TEMPO_EXPIRACAO_MIN) {
+            console.log(`🕐 Sessão expirada para ${phone} (${Math.round(minutosPassados)}min)`);
+            return [];
+        }
+
+        return sessao.historico || [];
+    } catch (e) {
+        console.warn('⚠️ Erro ao carregar histórico:', e.message);
+        return [];
+    }
+}
+
+async function salvarHistorico(phone, historico) {
+    try {
+        const store = getStore('conversas');
+        await store.set(phone, JSON.stringify({
+            historico: historico.slice(-MAX_MENSAGENS),
+            ultimaMensagem: Date.now(),
+        }));
+    } catch (e) {
+        console.warn('⚠️ Erro ao salvar histórico:', e.message);
+    }
+}
 
 // ============================================
 // PROMPT DE SISTEMA
@@ -261,13 +303,24 @@ exports.handler = async (event) => {
 
         console.log(`📩 ${pushName} (${phoneFinal}): ${mensagemTexto}`);
 
-        // Processa com OpenAI
+        // Carregar histórico da conversa
+        const historico = await carregarHistorico(phoneFinal);
+        console.log(`💾 Histórico carregado: ${historico.length} mensagens anteriores`);
+
+        // Montar mensagens para OpenAI (system + histórico + nova mensagem)
+        const messagesParaIA = [
+            { role: 'system', content: getSystemPrompt() },
+            ...historico,
+            { role: 'user', content: historico.length === 0
+                ? `O nome do cliente é ${pushName}. A mensagem dele é: ${mensagemTexto}`
+                : mensagemTexto
+            },
+        ];
+
+        // Processa com OpenAI (com contexto da conversa)
         const completion = await openai.chat.completions.create({
             model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-            messages: [
-                { role: 'system', content: getSystemPrompt() },
-                { role: 'user', content: `O nome do cliente é ${pushName}. A mensagem dele é: ${mensagemTexto}` },
-            ],
+            messages: messagesParaIA,
             max_tokens: 500,
             temperature: 0.7,
         });
@@ -276,6 +329,18 @@ exports.handler = async (event) => {
             || 'Desculpe, tive um problema técnico. Pode repetir? 😊';
 
         console.log(`🤖 Resposta: ${reply.substring(0, 100)}...`);
+
+        // Salvar histórico atualizado (mensagem do cliente + resposta do bot)
+        const novoHistorico = [
+            ...historico,
+            { role: 'user', content: historico.length === 0
+                ? `O nome do cliente é ${pushName}. A mensagem dele é: ${mensagemTexto}`
+                : mensagemTexto
+            },
+            { role: 'assistant', content: reply },
+        ];
+        await salvarHistorico(phoneFinal, novoHistorico);
+        console.log(`💾 Histórico salvo: ${novoHistorico.length} mensagens`);
 
         // Envia resposta no WhatsApp
         await sendWhatsAppMessage(phoneFinal, reply);
