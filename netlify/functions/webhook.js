@@ -612,15 +612,43 @@ exports.handler = async (event) => {
         // ALERTA AUTOMÁTICO PARA TÉCNICOS (HANDOFF)
         // ================================================================
         const tecnicos = {
-            'Luiz Fernando': process.env.PHONE_LUIZ || '5522988669180', // <-- Substitua pelo número real
-            'Rafael': process.env.PHONE_RAFAEL || '5522981495045',      // <-- Substitua pelo número real
-            'Robson': process.env.PHONE_ROBSON || '5522981733439'       // <-- Substitua pelo número real
+            'Luiz Fernando': process.env.PHONE_LUIZ || '5522988669180',
+            'Rafael': process.env.PHONE_RAFAEL || '5522981495045',
+            'Robson': process.env.PHONE_ROBSON || '5522981733439'
         };
+
+        function isHorarioComercial() {
+            try {
+                const agoraStr = new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" });
+                const agora = new Date(agoraStr);
+                const diaSemana = agora.getDay(); // 0 = Domingo, 1 = Segunda ... 6 = Sábado
+                const tempoAtual = agora.getHours() + agora.getMinutes() / 60;
+
+                if (diaSemana === 0) return false; // Domingo
+                if (diaSemana === 6) return tempoAtual >= 9 && tempoAtual < 12; // Sábado (09:00 - 12:00)
+                return tempoAtual >= 8.5 && tempoAtual < 18.5; // Segunda-Sexta (08:30 - 18:30)
+            } catch (e) {
+                // Fallback de segurança se o timezone der erro
+                const backupDate = new Date();
+                backupDate.setHours(backupDate.getHours() - 3);
+                const tempoAtual = backupDate.getHours() + backupDate.getMinutes() / 60;
+                return tempoAtual >= 8 && tempoAtual < 19;
+            }
+        }
+
+        const lojaAberta = isHorarioComercial();
 
         if (!sessao.tecnicoNotificado) {
             for (const [nome, numero] of Object.entries(tecnicos)) {
                 // Se o bot mencionou o nome do técnico na resposta
                 if (reply.includes(nome)) {
+                    
+                    // Condição de Horário: Somente dono (Luiz Fernando) recebe fora do expediente
+                    if (nome !== 'Luiz Fernando' && !lojaAberta) {
+                        console.log(`🔇 Alerta ignorado para ${nome}: Fora do horário de expediente da loja.`);
+                        break; 
+                    }
+
                     console.log(`🔔 Alertando técnico ${nome} no número ${numero}...`);
                     
                     const msgAlerta = `🚨 *PONTO CERTO - NOVO ATENDIMENTO* 🚨\n\nO robô acabou de encaminhar um cliente para você!\n\n🗣️ *Cliente:* ${pushName}\n📱 *Número:* ${phoneFinal}\n💬 *O cliente disse:* "${mensagemTexto}"\n\n⚠️ _Por favor, responda o cliente no WhatsApp oficial da loja!_`;
