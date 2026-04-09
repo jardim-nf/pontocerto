@@ -132,23 +132,21 @@ Você também entende áudios do cliente (até 2 minutos). O áudio será transc
  * Tenta múltiplas estratégias de download
  */
 async function downloadAudioFromUazapi(messageId, mediaUrl) {
-    // ═══ ESTRATÉGIA 1: Uazapi getBase64 ═══
+    // ═══ ESTRATÉGIA 1: Uazapi getBase64 (usando GET) ═══
     try {
-        const url = `${process.env.UAZAPI_URL}/chat/getBase64`;
-        console.log(`🎵 Tentativa 1 - getBase64: ${url} (msgId: ${messageId})`);
+        const url = `${process.env.UAZAPI_URL}/chat/getBase64?messageId=${encodeURIComponent(messageId)}`;
+        console.log(`🎵 Tentativa 1 - getBase64: ${url}`);
 
         const response = await fetch(url, {
-            method: 'POST',
+            method: 'GET',
             headers: {
-                'Content-Type': 'application/json',
                 'token': process.env.UAZAPI_TOKEN,
-            },
-            body: JSON.stringify({ messageId }),
+            }
         });
 
         if (response.ok) {
             const data = await response.json();
-            const base64Data = data.base64 || data.data || data.result;
+            const base64Data = data.base64 || data.data || data.result || (data.message && data.message.base64);
             if (base64Data) {
                 console.log('✅ Áudio baixado via getBase64');
                 const cleanBase64 = base64Data.replace(/^data:[^;]+;base64,/, '');
@@ -163,25 +161,23 @@ async function downloadAudioFromUazapi(messageId, mediaUrl) {
         console.warn('⚠️ getBase64 exception:', e.message);
     }
 
-    // ═══ ESTRATÉGIA 2: Uazapi downloadMediaMessage ═══
+    // ═══ ESTRATÉGIA 2: Uazapi downloadMediaMessage (usando GET) ═══
     try {
-        const url = `${process.env.UAZAPI_URL}/chat/downloadMediaMessage`;
+        const url = `${process.env.UAZAPI_URL}/chat/downloadMediaMessage?messageId=${encodeURIComponent(messageId)}`;
         console.log(`🎵 Tentativa 2 - downloadMediaMessage: ${url}`);
 
         const response = await fetch(url, {
-            method: 'POST',
+            method: 'GET',
             headers: {
-                'Content-Type': 'application/json',
                 'token': process.env.UAZAPI_TOKEN,
-            },
-            body: JSON.stringify({ messageId }),
+            }
         });
 
         if (response.ok) {
             const contentType = response.headers.get('content-type') || '';
             if (contentType.includes('json')) {
                 const data = await response.json();
-                const base64Data = data.base64 || data.data || data.result;
+                const base64Data = data.base64 || data.data || data.result || (data.message && data.message.base64);
                 if (base64Data) {
                     console.log('✅ Áudio baixado via downloadMediaMessage (json)');
                     const cleanBase64 = base64Data.replace(/^data:[^;]+;base64,/, '');
