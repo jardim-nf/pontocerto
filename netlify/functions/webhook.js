@@ -109,10 +109,10 @@ REGRAS ESTRITAS DE MENSAGENS NO WHATSAPP:
 
 REGRAS DE DIRECIONAMENTO (MUITO IMPORTANTE):
 Quando você não puder continuar sozinho ou quando o cliente quiser um orçamento/falar com alguém, você deve avisar que UM TÉCNICO ESPECÍFICO vai assumir e DEPOIS DISSO aguardar. 
-- Para VENDAS OU DÚVIDAS DE CELULAR, diga que o **Luis Fernando** vai assumir o atendimento e não responda mais.
+- Para VENDAS OU DÚVIDAS DE CELULAR, diga que o **Luiz Fernando** vai assumir o atendimento e não responda mais.
 - Para COMPUTADOR E IMPRESSORA, diga que o **Rafael** vai assumir o atendimento e não responda mais.
-- Para VENDA DE ACESSÓRIOS ou OUTROS ASSUNTOS, diga que o **Robinho** vai assumir o atendimento e não responda mais.
-Exemplo de encaminhamento: "Anotado! O Luis Fernando já vai te chamar aqui para ver certinho essa questão do seu celular, um momento!"
+- Para VENDA DE ACESSÓRIOS ou OUTROS ASSUNTOS, diga que o **Robson** vai assumir o atendimento e não responda mais.
+Exemplo de encaminhamento: "Anotado! O Luiz Fernando já vai te chamar aqui para ver certinho essa questão do seu celular, um momento!"
 
 SOBRE A LOJA:
 - Nome: Ponto Certo Informática
@@ -450,6 +450,22 @@ exports.handler = async (event) => {
             console.log('📋 FORMATO DESCONHECIDO — tentando fallback');
         }
 
+        const msgArrForReaction = body.messages || (body.message ? [body.message] : []);
+        const msgForReaction = msgArrForReaction[0] || {};
+        const isReaction = !!(
+            body?.message?.reactionMessage || 
+            body?.data?.message?.reactionMessage || 
+            msgForReaction?.message?.reactionMessage || 
+            msgForReaction?.reactionMessage || 
+            body?.type === 'reaction' ||
+            body?.data?.messageType === 'reactionMessage'
+        );
+
+        if (isReaction) {
+            console.log('⏭️ IGNORADO: Reação na mensagem');
+            return { statusCode: 200, body: JSON.stringify({ status: 'ignored', reason: 'reaction' }) };
+        }
+
         // Limpar telefone: remover @s.whatsapp.net, @c.us, e caracteres não numéricos
         telefone = String(telefone).replace(/@[\w.]+/g, '').replace(/[^0-9]/g, '');
         mensagemTexto = String(mensagemTexto || '').trim();
@@ -591,6 +607,35 @@ exports.handler = async (event) => {
         ];
         
         sessao.historico = novoHistorico;
+
+        // ================================================================
+        // ALERTA AUTOMÁTICO PARA TÉCNICOS (HANDOFF)
+        // ================================================================
+        const tecnicos = {
+            'Luiz Fernando': process.env.PHONE_LUIZ || '5522988669180', // <-- Substitua pelo número real
+            'Rafael': process.env.PHONE_RAFAEL || '5522900000000',      // <-- Substitua pelo número real
+            'Robson': process.env.PHONE_ROBSON || '5522900000000'       // <-- Substitua pelo número real
+        };
+
+        if (!sessao.tecnicoNotificado) {
+            for (const [nome, numero] of Object.entries(tecnicos)) {
+                // Se o bot mencionou o nome do técnico na resposta
+                if (reply.includes(nome)) {
+                    console.log(`🔔 Alertando técnico ${nome} no número ${numero}...`);
+                    
+                    const msgAlerta = `🚨 *PONTO CERTO - NOVO ATENDIMENTO* 🚨\n\nO robô acabou de encaminhar um cliente para você!\n\n🗣️ *Cliente:* ${pushName}\n📱 *Número:* ${phoneFinal}\n💬 *O cliente disse:* "${mensagemTexto}"\n\n⚠️ _Por favor, responda o cliente no WhatsApp oficial da loja!_`;
+                    
+                    // Envia o alerta para o WhatsApp pessoal do técnico
+                    await sendWhatsAppMessage(numero, msgAlerta).catch(e => console.error(`❌ Erro ao alertar ${nome}:`, e.message));
+                    
+                    // Marca na sessão para não ficar floodando o técnico se o cliente mandar mais mensagens
+                    sessao.tecnicoNotificado = true; 
+                    break;
+                }
+            }
+        }
+        // ================================================================
+
         await salvarSessao(phoneFinal, sessao);
         console.log(`💾 Histórico salvo: ${novoHistorico.length} mensagens`);
 
