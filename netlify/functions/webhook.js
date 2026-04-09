@@ -7,6 +7,7 @@
  */
 
 const OpenAI = require('openai');
+const { toFile } = require('openai');
 const { Readable } = require('stream');
 
 const openai = new OpenAI({
@@ -152,11 +153,14 @@ async function downloadAudioFromUazapi(messageId, mediaUrl) {
                 console.log('✅ Áudio baixado via getBase64');
                 const cleanBase64 = base64Data.replace(/^data:[^;]+;base64,/, '');
                 return Buffer.from(cleanBase64, 'base64');
+            } else {
+                console.warn(`⚠️ getBase64 OK, mas sem dados em base64: ${JSON.stringify(data).substring(0,100)}`);
             }
+        } else {
+            console.warn(`⚠️ getBase64 falhou com status ${response.status}: ${await response.text()}`);
         }
-        console.warn('⚠️ getBase64 não retornou dados');
     } catch (e) {
-        console.warn('⚠️ getBase64 falhou:', e.message);
+        console.warn('⚠️ getBase64 exception:', e.message);
     }
 
     // ═══ ESTRATÉGIA 2: Uazapi downloadMediaMessage ═══
@@ -182,6 +186,8 @@ async function downloadAudioFromUazapi(messageId, mediaUrl) {
                     console.log('✅ Áudio baixado via downloadMediaMessage (json)');
                     const cleanBase64 = base64Data.replace(/^data:[^;]+;base64,/, '');
                     return Buffer.from(cleanBase64, 'base64');
+                } else {
+                    console.warn(`⚠️ downloadMediaMessage OK, mas sem dados em base64: ${JSON.stringify(data).substring(0,100)}`);
                 }
             } else {
                 // Retornou o binário direto
@@ -191,30 +197,17 @@ async function downloadAudioFromUazapi(messageId, mediaUrl) {
                     return Buffer.from(arrayBuffer);
                 }
             }
+        } else {
+            console.warn(`⚠️ downloadMediaMessage falhou com status ${response.status}: ${await response.text()}`);
         }
-        console.warn('⚠️ downloadMediaMessage não retornou dados');
     } catch (e) {
-        console.warn('⚠️ downloadMediaMessage falhou:', e.message);
+        console.warn('⚠️ downloadMediaMessage exception:', e.message);
     }
 
-    // ═══ ESTRATÉGIA 3: URL direta do WhatsApp (último recurso) ═══
-    if (mediaUrl) {
-        try {
-            console.log(`🎵 Tentativa 3 - URL direta: ${mediaUrl.substring(0, 60)}...`);
-            const response = await fetch(mediaUrl);
-            if (response.ok) {
-                const arrayBuffer = await response.arrayBuffer();
-                if (arrayBuffer.byteLength > 0) {
-                    console.log('✅ Áudio baixado via URL direta');
-                    return Buffer.from(arrayBuffer);
-                }
-            }
-        } catch (e) {
-            console.warn('⚠️ URL direta falhou:', e.message);
-        }
-    }
-
-    throw new Error('Todas as estratégias de download falharam');
+    // ═══ ESTRATÉGIA 3: Endpoint Custom da Uazapi (usando GET na URL nativa se disponível) ═══
+    // Nota: Como a mediaUrl do WhatsApp é um arquivo encriptado, nós só tentamos descriptografar direto.
+    // Whisper não consegue ler arquivos .enc brutos não lidos pela API.
+    throw new Error('Todas as estratégias de download via Uazapi falharam. URL direta não serve (encriptada).');
 }
 
 /**
@@ -223,8 +216,8 @@ async function downloadAudioFromUazapi(messageId, mediaUrl) {
 async function transcribeAudio(audioBuffer) {
     console.log(`🎤 Transcrevendo áudio (${Math.round(audioBuffer.length / 1024)}KB)...`);
 
-    // Cria um File-like object para o SDK da OpenAI
-    const file = new File([audioBuffer], 'audio.ogg', { type: 'audio/ogg' });
+    // Cria um objeto de arquivo correto para API da OpenAI usando toFile
+    const file = await toFile(audioBuffer, 'audio.ogg', { type: 'audio/ogg' });
 
     const transcription = await openai.audio.transcriptions.create({
         model: 'whisper-1',
