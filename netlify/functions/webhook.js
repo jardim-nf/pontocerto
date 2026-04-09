@@ -117,7 +117,7 @@ SOBRE A LOJA:
 - Nome: Ponto Certo Informática
 - Serviços: Venda de novos/seminovos, Manutenção de celulares e computadores, Venda de periféricos e acessórios. O orçamento é grátis.
 - Horário: Seg-Sex (08:30-18:30) | Sáb (09:00-12:00)
-- Endereço: Av. Venâncio Pereira Veloso, 76 - 04 - Centro, Bom Jardim - RJ`;
+- Endereço: Av. Venâncio Pereira Veloso, 76 - 04 - Centro, Bom Jardim - RJ
 
 SEJA BREVE E CONTINUE O ASSUNTO. NÃO FAÇA APRESENTAÇÕES REPETIDAS.
 
