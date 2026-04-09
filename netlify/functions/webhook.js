@@ -131,73 +131,63 @@ Você também entende áudios do cliente (até 2 minutos). O áudio será transc
  * Baixa o áudio da mensagem via API da Uazapi
  * Tenta múltiplas estratégias de download
  */
-async function downloadAudioFromUazapi(messageId, mediaUrl) {
-    // ═══ ESTRATÉGIA 1: Uazapi getBase64 (usando GET) ═══
-    try {
-        const url = `${process.env.UAZAPI_URL}/chat/getBase64?messageId=${encodeURIComponent(messageId)}`;
-        console.log(`🎵 Tentativa 1 - getBase64: ${url}`);
+async function downloadAudioFromUazapi(messageId, mediaUrl, instanceName) {
+    const endpointsToTry = [
+        // Evolution API e Uazapi (com instanceName)
+        { method: 'POST', url: `${process.env.UAZAPI_URL}/chat/getBase64/${instanceName || 'pontocerto'}`, body: { messageId } },
+        { method: 'POST', url: `${process.env.UAZAPI_URL}/message/getBase64/${instanceName || 'pontocerto'}`, body: { messageId } },
+        { method: 'POST', url: `${process.env.UAZAPI_URL}/chat/getBase64Message/${instanceName || 'pontocerto'}`, body: { messageId } },
+        { method: 'POST', url: `${process.env.UAZAPI_URL}/downloadMediaMessage/${instanceName || 'pontocerto'}`, body: { messageId } },
+        // Fallbacks base
+        { method: 'POST', url: `${process.env.UAZAPI_URL}/chat/getBase64`, body: { messageId } },
+        { method: 'GET', url: `${process.env.UAZAPI_URL}/chat/getBase64/${instanceName || 'pontocerto'}?messageId=${encodeURIComponent(messageId)}` }
+    ];
 
-        const response = await fetch(url, {
-            method: 'GET',
-            headers: {
-                'token': process.env.UAZAPI_TOKEN,
+    for (const ep of endpointsToTry) {
+        try {
+            console.log(`🎵 Tentando: ${ep.method} ${ep.url}`);
+            
+            const options = {
+                method: ep.method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'token': process.env.UAZAPI_TOKEN,
+                }
+            };
+
+            if (ep.method === 'POST') {
+                options.body = JSON.stringify(ep.body);
             }
-        });
 
-        if (response.ok) {
-            const data = await response.json();
-            const base64Data = data.base64 || data.data || data.result || (data.message && data.message.base64);
-            if (base64Data) {
-                console.log('✅ Áudio baixado via getBase64');
-                const cleanBase64 = base64Data.replace(/^data:[^;]+;base64,/, '');
-                return Buffer.from(cleanBase64, 'base64');
-            } else {
-                console.warn(`⚠️ getBase64 OK, mas sem dados em base64: ${JSON.stringify(data).substring(0,100)}`);
-            }
-        } else {
-            console.warn(`⚠️ getBase64 falhou com status ${response.status}: ${await response.text()}`);
-        }
-    } catch (e) {
-        console.warn('⚠️ getBase64 exception:', e.message);
-    }
+            const response = await fetch(ep.url, options);
 
-    // ═══ ESTRATÉGIA 2: Uazapi downloadMediaMessage (usando GET) ═══
-    try {
-        const url = `${process.env.UAZAPI_URL}/chat/downloadMediaMessage?messageId=${encodeURIComponent(messageId)}`;
-        console.log(`🎵 Tentativa 2 - downloadMediaMessage: ${url}`);
-
-        const response = await fetch(url, {
-            method: 'GET',
-            headers: {
-                'token': process.env.UAZAPI_TOKEN,
-            }
-        });
-
-        if (response.ok) {
-            const contentType = response.headers.get('content-type') || '';
-            if (contentType.includes('json')) {
-                const data = await response.json();
-                const base64Data = data.base64 || data.data || data.result || (data.message && data.message.base64);
-                if (base64Data) {
-                    console.log('✅ Áudio baixado via downloadMediaMessage (json)');
-                    const cleanBase64 = base64Data.replace(/^data:[^;]+;base64,/, '');
-                    return Buffer.from(cleanBase64, 'base64');
+            if (response.ok) {
+                const contentType = response.headers.get('content-type') || '';
+                
+                if (contentType.includes('json')) {
+                    const data = await response.json();
+                    const base64Data = data.base64 || data.data || data.result || (data.message && data.message.base64);
+                    if (base64Data) {
+                        console.log(`✅ Áudio baixado via ${ep.url}`);
+                        const cleanBase64 = base64Data.replace(/^data:[^;]+;base64,/, '');
+                        return Buffer.from(cleanBase64, 'base64');
+                    } else {
+                        console.warn(`⚠️ OK, mas sem base64: ${JSON.stringify(data).substring(0,60)}`);
+                    }
                 } else {
-                    console.warn(`⚠️ downloadMediaMessage OK, mas sem dados em base64: ${JSON.stringify(data).substring(0,100)}`);
+                    // Retornou binário?
+                    const arrayBuffer = await response.arrayBuffer();
+                    if (arrayBuffer.byteLength > 0) {
+                        console.log(`✅ Áudio baixado (binário) via ${ep.url}`);
+                        return Buffer.from(arrayBuffer);
+                    }
                 }
             } else {
-                // Retornou o binário direto
-                const arrayBuffer = await response.arrayBuffer();
-                if (arrayBuffer.byteLength > 0) {
-                    console.log('✅ Áudio baixado via downloadMediaMessage (binary)');
-                    return Buffer.from(arrayBuffer);
-                }
+                console.warn(`⚠️ Falhou ${response.status}: ${await response.text().catch(()=>'')}`);
             }
-        } else {
-            console.warn(`⚠️ downloadMediaMessage falhou com status ${response.status}: ${await response.text()}`);
+        } catch (e) {
+            console.warn(`⚠️ Erro na requisição: ${e.message}`);
         }
-    } catch (e) {
-        console.warn('⚠️ downloadMediaMessage exception:', e.message);
     }
 
     // ═══ ESTRATÉGIA 3: Endpoint Custom da Uazapi (usando GET na URL nativa se disponível) ═══
@@ -429,7 +419,8 @@ exports.handler = async (event) => {
 
             // Baixar e transcrever o áudio
             try {
-                const audioBuffer = await downloadAudioFromUazapi(audioInfo.messageId, audioInfo.mediaUrl);
+                const instanceName = body.instanceName || process.env.UAZAPI_INSTANCE || 'pontocerto';
+                const audioBuffer = await downloadAudioFromUazapi(audioInfo.messageId, audioInfo.mediaUrl, instanceName);
                 const transcricao = await transcribeAudio(audioBuffer);
                 mensagemTexto = `[TRANSCRIÇÃO DE ÁUDIO: ${transcricao}]`;
                 console.log(`🎤 Áudio transcrito: "${transcricao.substring(0, 80)}..."`);
