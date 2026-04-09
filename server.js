@@ -14,9 +14,10 @@
 
 const express = require('express');
 const OpenAI = require('openai');
+const { Readable } = require('stream');
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // ============================================
 // CONFIGURAÇÃO — PREENCHA SEUS DADOS AQUI
@@ -32,6 +33,9 @@ const CONFIG = {
     // OpenAI 
     OPENAI_API_KEY: process.env.OPENAI_API_KEY || 'SUA_CHAVE_OPENAI_AQUI',
     OPENAI_MODEL: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+
+    // Áudio
+    MAX_AUDIO_SECONDS: 120, // 2 minutos
 };
 
 // ============================================
@@ -176,7 +180,10 @@ Quando pedirem vendedor: "Vou te conectar com um dos nossos especialistas! Um mo
 Empatia, não discuta, encaminhe para atendente humano.
 
 ## FORA DO CONTEXTO
-Redirecione: "Essa está fora da minha área! 😅 Sou especialista em tecnologia e informática."`;
+Redirecione: "Essa está fora da minha área! 😅 Sou especialista em tecnologia e informática."
+
+## ÁUDIOS
+Você também consegue entender áudios do cliente (até 2 minutos). O áudio será transcrito e a transcrição chegará como [TRANSCRIÇÃO DE ÁUDIO: ...]. Responda normalmente como se o cliente tivesse digitado aquela mensagem. Não mencione que foi um áudio a menos que não faça sentido.`;
 }
 
 // ============================================
@@ -223,6 +230,61 @@ async function processMessage(phone, pushName, userMessage) {
 }
 
 // ============================================
+// FUNÇÕES DE ÁUDIO
+// ============================================
+
+async function downloadAudioFromUazapi(messageId) {
+    const url = `${CONFIG.UAZAPI_URL}/chat/getBase64`;
+    console.log(`🎵 Baixando áudio via: ${url} (msgId: ${messageId})`);
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'token': CONFIG.UAZAPI_TOKEN,
+        },
+        body: JSON.stringify({ messageId }),
+    });
+
+    if (!response.ok) {
+        throw new Error(`Uazapi download error ${response.status}`);
+    }
+
+    const data = await response.json();
+    const base64Data = data.base64 || data.data || data.result;
+    if (!base64Data) throw new Error('Nenhum dado base64 retornado');
+
+    const cleanBase64 = base64Data.replace(/^data:[^;]+;base64,/, '');
+    return Buffer.from(cleanBase64, 'base64');
+}
+
+async function transcribeAudio(audioBuffer) {
+    console.log(`🎤 Transcrevendo áudio (${Math.round(audioBuffer.length / 1024)}KB)...`);
+    const file = new File([audioBuffer], 'audio.ogg', { type: 'audio/ogg' });
+    const transcription = await openai.audio.transcriptions.create({
+        model: 'whisper-1',
+        file: file,
+        language: 'pt',
+    });
+    console.log(`✅ Transcrição: "${transcription.text.substring(0, 80)}..."`);
+    return transcription.text;
+}
+
+function detectAudioMessage(body) {
+    const key = body?.key || body?.data?.key || {};
+    const messageData = body?.message || body?.data?.message || {};
+    const audioMsg = messageData?.audioMessage;
+    if (audioMsg) {
+        return {
+            isAudio: true,
+            duration: audioMsg.seconds || 0,
+            messageId: key?.id || '',
+        };
+    }
+    return { isAudio: false };
+}
+
+// ============================================
 // ENVIAR MENSAGEM VIA UAZAPI
 // ============================================
 async function sendWhatsAppMessage(phone, message) {
@@ -264,27 +326,58 @@ app.post('/webhook', async (req, res) => {
         const remoteJid = key.remoteJid || '';
         const isGroup = remoteJid.includes('@g.us');
 
-        // Ignora: mensagens próprias, grupos, e mensagens sem texto
+        // Ignora: mensagens próprias e grupos
         if (fromMe || isGroup) {
             return res.json({ status: 'ignored', reason: fromMe ? 'own_message' : 'group' });
-        }
-
-        // Extrai texto da mensagem
-        const text = messageData.conversation
-            || messageData.extendedTextMessage?.text
-            || messageData.buttonsResponseMessage?.selectedButtonId
-            || messageData.listResponseMessage?.singleSelectReply?.selectedRowId
-            || '';
-
-        if (!text.trim()) {
-            return res.json({ status: 'ignored', reason: 'no_text' });
         }
 
         // Extrai telefone e nome
         const phone = remoteJid.replace('@s.whatsapp.net', '');
         const pushName = body.pushName || body.data?.pushName || 'Cliente';
 
-        console.log(`📩 Mensagem de ${pushName} (${phone}): ${text}`);
+        // ================================================================
+        // DETECÇÃO DE ÁUDIO
+        // ================================================================
+        const audioInfo = detectAudioMessage(body);
+        let text = '';
+
+        if (audioInfo.isAudio) {
+            console.log(`🎵 ÁUDIO de ${pushName} (${phone}): ${audioInfo.duration}s`);
+
+            // Verificar limite de 2 minutos
+            if (audioInfo.duration > CONFIG.MAX_AUDIO_SECONDS) {
+                await sendWhatsAppMessage(phone, 
+                    `Opa! 😅 Infelizmente só consigo entender áudios de até 2 minutos. Pode mandar um áudio mais curto ou digitar sua mensagem? 👍`
+                );
+                return res.json({ status: 'ignored', reason: 'audio_too_long' });
+            }
+
+            // Baixar e transcrever
+            try {
+                const audioBuffer = await downloadAudioFromUazapi(audioInfo.messageId);
+                const transcription = await transcribeAudio(audioBuffer);
+                text = `[TRANSCRIÇÃO DE ÁUDIO: ${transcription}]`;
+            } catch (audioErr) {
+                console.error('❌ Erro ao processar áudio:', audioErr.message);
+                await sendWhatsAppMessage(phone,
+                    `Desculpa, não consegui ouvir o áudio 😅 Pode digitar sua mensagem ou tentar mandar o áudio de novo?`
+                );
+                return res.json({ status: 'error', reason: 'audio_failed' });
+            }
+        } else {
+            // Extrai texto da mensagem
+            text = messageData.conversation
+                || messageData.extendedTextMessage?.text
+                || messageData.buttonsResponseMessage?.selectedButtonId
+                || messageData.listResponseMessage?.singleSelectReply?.selectedRowId
+                || '';
+        }
+
+        if (!text.trim()) {
+            return res.json({ status: 'ignored', reason: 'no_text' });
+        }
+
+        console.log(`📩 Mensagem de ${pushName} (${phone}): ${text.substring(0, 100)}`);
 
         // Processa com IA
         const reply = await processMessage(phone, pushName, text);

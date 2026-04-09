@@ -2,14 +2,21 @@
  * ============================================
  *  CHATBOT PONTO CERTO INFORMÁTICA
  *  Netlify Function: Uazapi Webhook → OpenAI → WhatsApp
+ *  Suporte: Texto + Áudio (até 2 minutos)
  * ============================================
  */
 
 const OpenAI = require('openai');
+const { Readable } = require('stream');
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
+
+// ============================================
+// CONFIGURAÇÃO DE ÁUDIO
+// ============================================
+const MAX_AUDIO_SECONDS = 120; // 2 minutos
 
 // ============================================
 // MEMÓRIA DE CONVERSA
@@ -107,9 +114,122 @@ SOBRE A LOJA:
 - Endereço: Av. Venâncio Pereira Veloso, 76 - 04 - Centro, Bom Jardim - RJ
 - Falar com Humano: "Vou pedir para um vendedor te chamar aqui, um momento!"
 
-SEJA BREVE E CONTINUE O ASSUNTO. NÃO FAÇA APRESENTAÇÕES REPETIDAS.`;
+SEJA BREVE E CONTINUE O ASSUNTO. NÃO FAÇA APRESENTAÇÕES REPETIDAS.
+
+ÁUDIOS:
+Você também entende áudios do cliente (até 2 minutos). O áudio será transcrito e a transcrição chegará como [TRANSCRIÇÃO DE ÁUDIO: ...]. Responda normalmente como se o cliente tivesse digitado aquela mensagem. Não mencione que foi um áudio a menos que não faça sentido.`;
 }
 
+
+
+// ============================================
+// FUNÇÕES DE ÁUDIO
+// ============================================
+
+/**
+ * Baixa o áudio da mensagem via API da Uazapi
+ * Retorna o Buffer do arquivo de áudio
+ */
+async function downloadAudioFromUazapi(messageId) {
+    const url = `${process.env.UAZAPI_URL}/chat/getBase64`;
+    console.log(`🎵 Baixando áudio via: ${url} (msgId: ${messageId})`);
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'token': process.env.UAZAPI_TOKEN,
+        },
+        body: JSON.stringify({
+            messageId: messageId,
+        }),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Uazapi download error ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    
+    // A Uazapi retorna base64 no campo "base64" ou "data"
+    const base64Data = data.base64 || data.data || data.result;
+    if (!base64Data) {
+        throw new Error('Nenhum dado base64 retornado pela Uazapi');
+    }
+
+    // Remove o prefixo data:audio/xxx;base64, se existir
+    const cleanBase64 = base64Data.replace(/^data:[^;]+;base64,/, '');
+    return Buffer.from(cleanBase64, 'base64');
+}
+
+/**
+ * Transcreve um buffer de áudio usando OpenAI Whisper
+ */
+async function transcribeAudio(audioBuffer) {
+    console.log(`🎤 Transcrevendo áudio (${Math.round(audioBuffer.length / 1024)}KB)...`);
+
+    // Cria um File-like object para o SDK da OpenAI
+    const file = new File([audioBuffer], 'audio.ogg', { type: 'audio/ogg' });
+
+    const transcription = await openai.audio.transcriptions.create({
+        model: 'whisper-1',
+        file: file,
+        language: 'pt',
+    });
+
+    console.log(`✅ Transcrição: "${transcription.text.substring(0, 100)}..."`);
+    return transcription.text;
+}
+
+/**
+ * Detecta se a mensagem contém áudio e extrai metadados
+ */
+function detectAudioMessage(body) {
+    // Formato A — BaseUrl (meunumero.uazapi.com)
+    if (body.BaseUrl) {
+        const msgArr = body.messages || (body.message ? [body.message] : []);
+        const msg = msgArr[0] || {};
+        const audioMsg = msg?.message?.audioMessage;
+        if (audioMsg) {
+            return {
+                isAudio: true,
+                duration: audioMsg.seconds || 0,
+                messageId: msg?.key?.id || '',
+                mimetype: audioMsg.mimetype || 'audio/ogg',
+            };
+        }
+    }
+
+    // Formato B — event messages.upsert
+    if (body?.event === 'messages.upsert' || body?.data?.key) {
+        const msgData = body.data || {};
+        const audioMsg = msgData?.message?.audioMessage;
+        if (audioMsg) {
+            return {
+                isAudio: true,
+                duration: audioMsg.seconds || 0,
+                messageId: msgData?.key?.id || '',
+                mimetype: audioMsg.mimetype || 'audio/ogg',
+            };
+        }
+    }
+
+    // Formato C — Baileys legado
+    if (body?.key?.remoteJid) {
+        const audioMsg = body?.message?.audioMessage;
+        if (audioMsg) {
+            return {
+                isAudio: true,
+                duration: audioMsg.seconds || 0,
+                messageId: body?.key?.id || '',
+                mimetype: audioMsg.mimetype || 'audio/ogg',
+            };
+        }
+    }
+
+    return { isAudio: false };
+}
 
 // ============================================
 // ENVIAR MENSAGEM VIA UAZAPI
@@ -240,8 +360,44 @@ exports.handler = async (event) => {
             return { statusCode: 200, body: JSON.stringify({ status: 'ignored', reason: 'no_phone' }) };
         }
 
+        // ================================================================
+        // PROCESSAMENTO DE ÁUDIO
+        // ================================================================
+        const audioInfo = detectAudioMessage(body);
+
+        if (audioInfo.isAudio) {
+            console.log(`🎵 ÁUDIO detectado: ${audioInfo.duration}s, msgId=${audioInfo.messageId}`);
+
+            // Verificar limite de 2 minutos
+            if (audioInfo.duration > MAX_AUDIO_SECONDS) {
+                console.log(`⏭️ ÁUDIO muito longo: ${audioInfo.duration}s (limite: ${MAX_AUDIO_SECONDS}s)`);
+                const phoneFinalAudio = telefone.startsWith('55') ? telefone : `55${telefone}`;
+                await sendWhatsAppMessage(
+                    phoneFinalAudio,
+                    `Opa! 😅 Infelizmente só consigo entender áudios de até 2 minutos. Pode mandar um áudio mais curto ou digitar sua mensagem? 👍`
+                );
+                return { statusCode: 200, body: JSON.stringify({ status: 'ignored', reason: 'audio_too_long' }) };
+            }
+
+            // Baixar e transcrever o áudio
+            try {
+                const audioBuffer = await downloadAudioFromUazapi(audioInfo.messageId);
+                const transcricao = await transcribeAudio(audioBuffer);
+                mensagemTexto = `[TRANSCRIÇÃO DE ÁUDIO: ${transcricao}]`;
+                console.log(`🎤 Áudio transcrito: "${transcricao.substring(0, 80)}..."`);
+            } catch (audioErr) {
+                console.error('❌ Erro ao processar áudio:', audioErr.message);
+                const phoneFinalAudio = telefone.startsWith('55') ? telefone : `55${telefone}`;
+                await sendWhatsAppMessage(
+                    phoneFinalAudio,
+                    `Desculpa, não consegui ouvir o áudio 😅 Pode digitar sua mensagem ou tentar mandar o áudio de novo?`
+                );
+                return { statusCode: 200, body: JSON.stringify({ status: 'error', reason: 'audio_failed' }) };
+            }
+        }
+
         if (!mensagemTexto) {
-            console.log('⏭️ IGNORADO: sem texto');
+            console.log('⏭️ IGNORADO: sem texto e sem áudio');
             return { statusCode: 200, body: JSON.stringify({ status: 'ignored', reason: 'no_text' }) };
         }
 
