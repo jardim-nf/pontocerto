@@ -123,15 +123,65 @@ Você também entende áudios do cliente (até 2 minutos). O áudio será transc
 
 
 
+const crypto = require('crypto');
+
 // ============================================
-// FUNÇÕES DE ÁUDIO
+// FUNÇÕES DE ÁUDIO E DESCRIPTOGRAFIA
 // ============================================
 
 /**
- * Baixa o áudio da mensagem via API da Uazapi
+ * Descriptografa mídia E2EE do WhatsApp usando o mediaKey
+ * Baseado no algoritmo HKDF / AES-CBC
+ */
+function decryptWhatsAppMedia(encryptedBuffer, mediaKeyBase64, mediaType = 'audio') {
+    const mediaKey = Buffer.from(mediaKeyBase64, 'base64');
+    
+    const typeConfigs = {
+        'audio': 'WhatsApp Audio Keys',
+        'image': 'WhatsApp Image Keys',
+        'video': 'WhatsApp Video Keys',
+        'document': 'WhatsApp Document Keys'
+    };
+    const info = Buffer.from(typeConfigs[mediaType] || typeConfigs['audio'], 'utf8');
+
+    function hkdfExpand(ikm, info, length) {
+        const salt = Buffer.alloc(32, 0);
+        const prk = crypto.createHmac('sha256', salt).update(ikm).digest();
+        let okm = Buffer.alloc(0);
+        let t = Buffer.alloc(0);
+        let counter = 1;
+        while (okm.length < length) {
+            t = crypto.createHmac('sha256', prk).update(Buffer.concat([t, info, Buffer.from([counter])])).digest();
+            okm = Buffer.concat([okm, t]);
+            counter++;
+        }
+        return okm.slice(0, length);
+    }
+
+    const expanded = hkdfExpand(mediaKey, info, 112);
+    const iv = expanded.slice(0, 16);
+    const cipherKey = expanded.slice(16, 48);
+
+    const encryptedFile = encryptedBuffer.slice(0, encryptedBuffer.length - 10);
+    
+    const decipher = crypto.createDecipheriv('aes-256-cbc', cipherKey, iv);
+    decipher.setAutoPadding(false); 
+    
+    let decrypted = Buffer.concat([decipher.update(encryptedFile), decipher.final()]);
+
+    const padLength = decrypted[decrypted.length - 1];
+    if (padLength > 0 && padLength <= 16) {
+        decrypted = decrypted.slice(0, decrypted.length - padLength);
+    }
+
+    return decrypted;
+}
+
+/**
+ * Baixa o áudio da mensagem via API da Uazapi ou via Decrypt
  * Tenta múltiplas estratégias de download
  */
-async function downloadAudioFromUazapi(messageId, mediaUrl, instanceName) {
+async function downloadAudioFromUazapi(messageId, mediaUrl, instanceName, mediaKey) {
     const endpointsToTry = [
         // Evolution API e Uazapi (com instanceName)
         { method: 'POST', url: `${process.env.UAZAPI_URL}/chat/getBase64/${instanceName || 'pontocerto'}`, body: { messageId } },
@@ -190,9 +240,25 @@ async function downloadAudioFromUazapi(messageId, mediaUrl, instanceName) {
         }
     }
 
-    // ═══ ESTRATÉGIA 3: Endpoint Custom da Uazapi (usando GET na URL nativa se disponível) ═══
-    // Nota: Como a mediaUrl do WhatsApp é um arquivo encriptado, nós só tentamos descriptografar direto.
-    // Whisper não consegue ler arquivos .enc brutos não lidos pela API.
+    // ═══ ESTRATÉGIA FINAL: Decrypt Local ═══
+    if (mediaUrl && mediaKey) {
+        try {
+            console.log(`🎵 Tentando descriptografia local do áudio da URL direta...`);
+            const response = await fetch(mediaUrl);
+            if (response.ok) {
+                const arrayBuffer = await response.arrayBuffer();
+                const encryptedBuffer = Buffer.from(arrayBuffer);
+                const decryptedAudio = decryptWhatsAppMedia(encryptedBuffer, mediaKey, 'audio');
+                console.log(`✅ Áudio descriptografado localmente com sucesso!`);
+                return decryptedAudio;
+            } else {
+                console.warn(`⚠️ Falha ao baixar da URL direta: ${response.status}`);
+            }
+        } catch (e) {
+            console.warn(`⚠️ Erro na descriptografia local: ${e.message}`);
+        }
+    }
+
     throw new Error('Todas as estratégias de download via Uazapi falharam. URL direta não serve (encriptada).');
 }
 
@@ -221,9 +287,6 @@ async function transcribeAudio(audioBuffer) {
  */
 function detectAudioMessage(body) {
     // ═══ FORMATO A — BaseUrl (meunumero.uazapi.com) ═══
-    // Payload real: body.message.messageType === "AudioMessage"
-    // Dados do áudio: body.message.content { seconds, mimetype, URL, ... }
-    // ID da mensagem: body.message.messageid
     if (body.BaseUrl) {
         const msg = body.message || {};
         if (msg.messageType === 'AudioMessage' || msg.mediaType === 'ptt' || msg.mediaType === 'audio') {
@@ -234,6 +297,7 @@ function detectAudioMessage(body) {
                 messageId: msg.messageid || msg.id || '',
                 mimetype: content.mimetype || 'audio/ogg; codecs=opus',
                 mediaUrl: content.URL || '',
+                mediaKey: content.mediaKey || '',
             };
         }
     }
@@ -248,6 +312,8 @@ function detectAudioMessage(body) {
                 duration: audioMsg.seconds || 0,
                 messageId: msgData?.key?.id || '',
                 mimetype: audioMsg.mimetype || 'audio/ogg',
+                mediaUrl: audioMsg.url || '',
+                mediaKey: audioMsg.mediaKey ? Buffer.from(audioMsg.mediaKey).toString('base64') : '',
             };
         }
     }
@@ -261,6 +327,8 @@ function detectAudioMessage(body) {
                 duration: audioMsg.seconds || 0,
                 messageId: body?.key?.id || '',
                 mimetype: audioMsg.mimetype || 'audio/ogg',
+                mediaUrl: audioMsg.url || '',
+                mediaKey: audioMsg.mediaKey ? Buffer.from(audioMsg.mediaKey).toString('base64') : '',
             };
         }
     }
@@ -420,7 +488,7 @@ exports.handler = async (event) => {
             // Baixar e transcrever o áudio
             try {
                 const instanceName = body.instanceName || process.env.UAZAPI_INSTANCE || 'pontocerto';
-                const audioBuffer = await downloadAudioFromUazapi(audioInfo.messageId, audioInfo.mediaUrl, instanceName);
+                const audioBuffer = await downloadAudioFromUazapi(audioInfo.messageId, audioInfo.mediaUrl, instanceName, audioInfo.mediaKey);
                 const transcricao = await transcribeAudio(audioBuffer);
                 mensagemTexto = `[TRANSCRIÇÃO DE ÁUDIO: ${transcricao}]`;
                 console.log(`🎤 Áudio transcrito: "${transcricao.substring(0, 80)}..."`);
