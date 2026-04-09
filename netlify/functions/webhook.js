@@ -613,8 +613,8 @@ exports.handler = async (event) => {
         // ================================================================
         const tecnicos = {
             'Luiz Fernando': process.env.PHONE_LUIZ || '5522988669180', // <-- Substitua pelo número real
-            'Rafael': process.env.PHONE_RAFAEL || '5522900000000',      // <-- Substitua pelo número real
-            'Robson': process.env.PHONE_ROBSON || '5522900000000'       // <-- Substitua pelo número real
+            'Rafael': process.env.PHONE_RAFAEL || '5522981495045',      // <-- Substitua pelo número real
+            'Robson': process.env.PHONE_ROBSON || '5522981733439'       // <-- Substitua pelo número real
         };
 
         if (!sessao.tecnicoNotificado) {
