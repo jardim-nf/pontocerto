@@ -462,19 +462,23 @@ exports.handler = async (event) => {
         // INTERVENÇÃO HUMANA (Bot Pausado)
         // ----------------------------------------------------
         if (fromMe) {
-            if (!isAutoResponse && !mensagemTexto.includes('BOT PAUSADO') && telefone) {
-                console.log(`👨‍💻 TÉCNICO DETECTADO: Uma pessoa respondeu ao cliente ${telefone}.`);
+            const sessaoTemp = await carregarSessao(telefone);
+            const historicoTemp = sessaoTemp.historico || [];
+            const lastAsst = [...historicoTemp].reverse().find(m => m.role === 'assistant');
+            const isBotEcho = (lastAsst && lastAsst.content.trim() === mensagemTexto);
+
+            if (!isAutoResponse && !isBotEcho && telefone) {
+                console.log(`👨‍💻 TÉCNICO DETECTADO: Uma pessoa respondeu ao cliente ${telefone}. Msg: "${mensagemTexto.substring(0,30)}"`);
                 
                 // Pausar o chatbot por 10 minutos para esse cliente
-                const sessao = await carregarSessao(telefone);
-                const minutosPausa = 10; // 10 minutos
-                sessao.pausadoAte = Date.now() + (minutosPausa * 60000);
-                sessao.historico = []; // Limpa o histórico para quando a IA voltar não estar confusa
+                const minutosPausa = 10;
+                sessaoTemp.pausadoAte = Date.now() + (minutosPausa * 60000);
+                sessaoTemp.historico = []; // Limpa o histórico para quando a IA voltar não estar confusa
                 
-                await salvarSessao(telefone, sessao);
+                await salvarSessao(telefone, sessaoTemp);
                 console.log(`⏸️ BOT PAUSADO por ${minutosPausa} minutos para ${telefone}.`);
             } else {
-                console.log('⏭️ IGNORADO: fromMe=true (mensagem enviada via API/Bot)');
+                console.log('⏭️ IGNORADO: fromMe=true (mensagem enviada via API/Bot ou Echo idêntico)');
             }
             return { statusCode: 200, body: JSON.stringify({ status: 'ignored', reason: 'fromMe' }) };
         }
