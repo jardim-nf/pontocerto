@@ -30,7 +30,7 @@ const MAX_MENSAGENS = 20;
 // Memória in-process (funciona entre invocações na mesma instância quente)
 const memoriaLocal = new Map();
 
-async function carregarHistorico(phone) {
+async function carregarSessao(phone) {
     try {
         // Tenta carregar da memória local primeiro
         const local = memoriaLocal.get(phone);
@@ -39,10 +39,10 @@ async function carregarHistorico(phone) {
             if (minutosPassados > TEMPO_EXPIRACAO_MIN) {
                 console.log(`🕐 Sessão expirada para ${phone} (${Math.round(minutosPassados)}min)`);
                 memoriaLocal.delete(phone);
-                return [];
+                return { historico: [] };
             }
-            console.log(`💾 Histórico LOCAL carregado: ${local.historico.length} msgs`);
-            return local.historico || [];
+            console.log(`💾 Sessão LOCAL carregada: ${local.historico?.length || 0} msgs`);
+            return local;
         }
 
         // Tenta Netlify Blobs via SDK (pode falhar em alguns ambientes)
@@ -54,39 +54,38 @@ async function carregarHistorico(phone) {
                 const sessao = JSON.parse(dados);
                 const minutosPassados = (Date.now() - (sessao.ultimaMensagem || 0)) / 60000;
                 if (minutosPassados <= TEMPO_EXPIRACAO_MIN) {
-                    console.log(`💾 Histórico BLOBS carregado: ${sessao.historico.length} msgs`);
+                    console.log(`💾 Sessão BLOBS carregada: ${sessao.historico?.length || 0} msgs`);
                     // Cache local também
                     memoriaLocal.set(phone, sessao);
-                    return sessao.historico || [];
+                    return sessao;
                 }
             }
         } catch (blobErr) {
             console.warn('⚠️ Blobs indisponível, usando memória local:', blobErr.message);
         }
 
-        return [];
+        return { historico: [] };
     } catch (e) {
-        console.warn('⚠️ Erro ao carregar histórico:', e.message);
-        return [];
+        console.warn('⚠️ Erro ao carregar sessão:', e.message);
+        return { historico: [] };
     }
 }
 
-async function salvarHistorico(phone, historico) {
-    const sessao = {
-        historico: historico.slice(-MAX_MENSAGENS),
-        ultimaMensagem: Date.now(),
-    };
+async function salvarSessao(phone, sessao) {
+    if (!sessao.historico) sessao.historico = [];
+    sessao.historico = sessao.historico.slice(-MAX_MENSAGENS);
+    sessao.ultimaMensagem = Date.now();
 
     // Sempre salva na memória local (instantâneo)
     memoriaLocal.set(phone, sessao);
-    console.log(`💾 Histórico LOCAL salvo: ${sessao.historico.length} msgs`);
+    console.log(`💾 Sessão LOCAL salva: ${sessao.historico.length} msgs`);
 
     // Tenta salvar nos Blobs também (persistência)
     try {
         const { getStore } = require('@netlify/blobs');
         const store = getStore('conversas');
         await store.set(phone, JSON.stringify(sessao));
-        console.log(`💾 Histórico BLOBS salvo`);
+        console.log(`💾 Sessão BLOBS salva`);
     } catch (blobErr) {
         console.warn('⚠️ Blobs save falhou (usando só memória local):', blobErr.message);
     }
@@ -102,18 +101,23 @@ Aja como um humano prestativo, rápido e 100% focado em resolver o problema do c
 REGRAS ESTritas DE MENSAGENS NO WHATSAPP:
 1. NUNCA (JAMAIS) inicie a mensagem se apresentando como um robô. Se o cliente disser "oi" ou "boa noite", responda como humano: "Oi, como posso te ajudar hoje?" ou "Boa noite! Em que posso ajudar?".
 2. NUNCA envie listas enormes de opções a menos que o cliente pergunte "o que vocês fazem?".
-3. VÁ DIRETO AO PONTO. Se o cliente estiver falando de um defeito (ex: "tela quebrou", "17 pro"), APENAS continue o atendimento: pergunte o modelo exato, o nome do cliente ou o que houve, para adiantar o orçamento.
+3. VÁ DIRETO AO PONTO. Tente extrair o máximo de informações do cliente (modelo do aparelho, defeito, o que deseja comprar) antes de direcionar para um humano.
 4. Mantenha as mensagens super curtas (1 a 2 parágrafos pequenos, parecendo uma mensagem de WhatsApp real).
 5. NUNCA prometa preços ou prazos exatos (avise que precisa de avaliação do técnico na loja).
-6. Se não souber responder, diga "Vou confirmar isso com o técnico e já te aviso!".
-7. Use emojis de forma muito natural e moderada (tipo 😊 ou 👍).
+6. Use emojis de forma muito natural e moderada (tipo 😊 ou 👍).
+
+REGRAS DE DIRECIONAMENTO (MUITO IMPORTANTE):
+Quando você não puder continuar sozinho ou quando o cliente quiser um orçamento/falar com alguém, você deve avisar que UM TÉCNICO ESPECÍFICO vai assumir e DEPOIS DISSO aguardar. 
+- Para VENDAS OU DÚVIDAS DE CELULAR, diga que o **Luis Fernando** vai assumir o atendimento e não responda mais.
+- Para COMPUTADOR E IMPRESSORA, diga que o **Rafael** vai assumir o atendimento e não responda mais.
+- Para VENDA DE ACESSÓRIOS ou OUTROS ASSUNTOS, diga que o **Robinho** vai assumir o atendimento e não responda mais.
+Exemplo de encaminhamento: "Anotado! O Luis Fernando já vai te chamar aqui para ver certinho essa questão do seu celular, um momento!"
 
 SOBRE A LOJA:
 - Nome: Ponto Certo Informática
 - Serviços: Venda de novos/seminovos, Manutenção de celulares e computadores, Venda de periféricos e acessórios. O orçamento é grátis.
 - Horário: Seg-Sex (08:30-18:30) | Sáb (09:00-12:00)
-- Endereço: Av. Venâncio Pereira Veloso, 76 - 04 - Centro, Bom Jardim - RJ
-- Falar com Humano: "Vou pedir para um vendedor te chamar aqui, um momento!"
+- Endereço: Av. Venâncio Pereira Veloso, 76 - 04 - Centro, Bom Jardim - RJ`;
 
 SEJA BREVE E CONTINUE O ASSUNTO. NÃO FAÇA APRESENTAÇÕES REPETIDAS.
 
@@ -388,6 +392,7 @@ exports.handler = async (event) => {
         let telefone = '';
         let mensagemTexto = '';
         let fromMe = false;
+        let isAutoResponse = false;
 
         if (body.BaseUrl) {
             // ═══ FORMATO A — meunumero.uazapi.com (formato principal) ═══
@@ -409,6 +414,8 @@ exports.handler = async (event) => {
                 || body?.text || body?.body || body?.content || '';
 
             fromMe = msg?.key?.fromMe ?? msg?.fromMe ?? body?.fromMe ?? false;
+            // Se foi enviado pela API (o próprio Netlify enviou algo minutos atrás)
+            isAutoResponse = (msg?.wasSentByApi === true || body?.message?.wasSentByApi === true);
 
             console.log('📋 FORMATO A (BaseUrl) detectado');
 
@@ -420,6 +427,7 @@ exports.handler = async (event) => {
             mensagemTexto = msgData?.message?.conversation
                 || msgData?.message?.extendedTextMessage?.text || '';
             fromMe = msgData?.key?.fromMe || false;
+            isAutoResponse = (msgData?.message?.sender_lid === '' || msgData?.message?.wasSentByApi === true || false);
 
             console.log('📋 FORMATO B (data.key / messages.upsert) detectado');
 
@@ -448,11 +456,26 @@ exports.handler = async (event) => {
         // Detectar grupo
         const isGroup = String(body?.key?.remoteJid || body?.data?.key?.remoteJid || '').includes('@g.us');
 
-        console.log(`🔍 PARSED: fromMe=${fromMe}, telefone=${telefone}, texto="${mensagemTexto}", isGroup=${isGroup}`);
+        console.log(`🔍 PARSED: fromMe=${fromMe}, isAuto=${isAutoResponse}, telefone=${telefone}, texto="${mensagemTexto}"`);
 
-        // Ignorar: mensagens próprias, grupos, sem telefone/texto
+        // ----------------------------------------------------
+        // INTERVENÇÃO HUMANA (Bot Pausado)
+        // ----------------------------------------------------
         if (fromMe) {
-            console.log('⏭️ IGNORADO: fromMe=true (mensagem do próprio bot)');
+            if (!isAutoResponse && !mensagemTexto.includes('BOT PAUSADO') && telefone) {
+                console.log(`👨‍💻 TÉCNICO DETECTADO: Uma pessoa respondeu ao cliente ${telefone}.`);
+                
+                // Pausar o chatbot por 10 minutos para esse cliente
+                const sessao = await carregarSessao(telefone);
+                const minutosPausa = 10; // 10 minutos
+                sessao.pausadoAte = Date.now() + (minutosPausa * 60000);
+                sessao.historico = []; // Limpa o histórico para quando a IA voltar não estar confusa
+                
+                await salvarSessao(telefone, sessao);
+                console.log(`⏸️ BOT PAUSADO por ${minutosPausa} minutos para ${telefone}.`);
+            } else {
+                console.log('⏭️ IGNORADO: fromMe=true (mensagem enviada via API/Bot)');
+            }
             return { statusCode: 200, body: JSON.stringify({ status: 'ignored', reason: 'fromMe' }) };
         }
 
@@ -464,6 +487,16 @@ exports.handler = async (event) => {
         if (!telefone || telefone.length < 8) {
             console.log(`⏭️ IGNORADO: telefone inválido (${telefone})`);
             return { statusCode: 200, body: JSON.stringify({ status: 'ignored', reason: 'no_phone' }) };
+        }
+
+        // ----------------------------------------------------
+        // CHECAR SE O BOT ESTÁ PAUSADO
+        // ----------------------------------------------------
+        const sessao = await carregarSessao(telefone);
+        if (sessao.pausadoAte && Date.now() < sessao.pausadoAte) {
+            const minutosRestantes = Math.round((sessao.pausadoAte - Date.now()) / 60000);
+            console.log(`⏸️ IGNORADO: Bot pausado para ${telefone} (atendimento humano). Volta em ${minutosRestantes} min.`);
+            return { statusCode: 200, body: JSON.stringify({ status: 'ignored', reason: 'paused_human_attendance' }) };
         }
 
         // ================================================================
@@ -514,8 +547,9 @@ exports.handler = async (event) => {
 
         console.log(`📩 ${pushName} (${phoneFinal}): ${mensagemTexto}`);
 
-        // Carregar histórico da conversa
-        const historico = await carregarHistorico(phoneFinal);
+        // Carregar a sessão e o histórico da conversa
+        // O `sessao` aqui vem garantido pelo inicio do código (pois foi carregado para ver se estava pausado)
+        const historico = sessao.historico || [];
         console.log(`💾 Histórico carregado: ${historico.length} mensagens anteriores`);
 
         // Montar mensagens para OpenAI (system + histórico + nova mensagem)
@@ -550,7 +584,9 @@ exports.handler = async (event) => {
             },
             { role: 'assistant', content: reply },
         ];
-        await salvarHistorico(phoneFinal, novoHistorico);
+        
+        sessao.historico = novoHistorico;
+        await salvarSessao(phoneFinal, sessao);
         console.log(`💾 Histórico salvo: ${novoHistorico.length} mensagens`);
 
         // Envia resposta no WhatsApp
