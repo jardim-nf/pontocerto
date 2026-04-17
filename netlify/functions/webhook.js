@@ -92,7 +92,9 @@ async function salvarSessao(phone, sessao) {
 }
 
 // ============================================
-// PROMPfunction getSystemPrompt() {
+// PROMPT DE SISTEMA
+// ============================================
+function getSystemPrompt() {
     const agoraStr = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
     const agora = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
     const diaSemana = agora.getDay();
