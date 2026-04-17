@@ -545,6 +545,32 @@ exports.handler = async (event) => {
                 
                 return { statusCode: 200, body: JSON.stringify({ status: 'ok', message: 'comando_entregue_processado' }) };
             }
+
+            // COMANDO DE TESTE: FORÇAR DISPARO IMEDIATO DOS PENDENTES
+            if (mensagemTexto.trim().toLowerCase() === '/disparar_agora' && telefone) {
+                console.log(`🚀 COMANDO /disparar_agora ACIONADO MANUAMENTE`);
+                try {
+                    const { getStore } = require('@netlify/blobs');
+                    const posVendaStore = getStore('pos_venda');
+                    const listResult = await posVendaStore.list();
+                    let disparos = 0;
+                    
+                    for (const blob of listResult.blobs) {
+                        const agendamento = await posVendaStore.getJSON(blob.key);
+                        // Dispara tudo que já venceu
+                        if (Date.now() >= agendamento.dataDisparo) {
+                            const mensagemCSAT = `Oi! Aqui é a equipe da *Ponto Certo Informática*, tudo bom? 🚀\n\nPassando pra saber como ficou o seu aparelho que consertamos dia desses? Está tudo 100%?\n\nSe você gostou do nosso trabalho, te convidamos a avaliar nossa loja gratuitamente pelo Google acessando o link abaixo:\n📍 [LINK DO GOOGLE AQUI]\n\nSe precisar de algo ou tiver qualquer dúvida, é só dar um grito! Abaixo de Deus, estamos às ordens! 🙏`;
+                            await sendWhatsAppMessage(agendamento.telefone, mensagemCSAT);
+                            await posVendaStore.delete(blob.key);
+                            disparos++;
+                        }
+                    }
+                    await sendWhatsAppMessage(telefone, `✅ Teste manual rodado. Disparou ${disparos} pesquisa(s).`);
+                } catch (e) {
+                    console.log('Erro no disparo manual:', e.message);
+                }
+                return { statusCode: 200, body: JSON.stringify({ status: 'ok' }) };
+            }
             // ----------------------------------------------------
 
             if (!isAutoResponse && !isBotEcho && telefone) {
