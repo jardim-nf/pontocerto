@@ -541,6 +541,7 @@ exports.handler = async (event) => {
                     console.log(`📅 Pesquisa de CSAT agendada com sucesso para ${telefone}!`);
                 } catch (e) {
                     console.error('❌ Erro ao salvar agendamento de pós-venda:', e.message);
+                    await sendWhatsAppMessage(telefone, `❌ Erro no comando /entregue: ${e.message}`);
                 }
                 
                 return { statusCode: 200, body: JSON.stringify({ status: 'ok', message: 'comando_entregue_processado' }) };
@@ -568,6 +569,7 @@ exports.handler = async (event) => {
                     await sendWhatsAppMessage(telefone, `✅ Teste manual rodado. Disparou ${disparos} pesquisa(s).`);
                 } catch (e) {
                     console.log('Erro no disparo manual:', e.message);
+                    await sendWhatsAppMessage(telefone, `❌ Erro no comando /disparar_agora: ${e.message}`);
                 }
                 return { statusCode: 200, body: JSON.stringify({ status: 'ok' }) };
             }
