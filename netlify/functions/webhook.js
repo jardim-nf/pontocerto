@@ -537,7 +537,7 @@ exports.handler = async (event) => {
                         // PARA TESTE: Disparo em 5 minutos
                         dataDisparo: Date.now() + (5 * 60 * 1000) 
                     };
-                    await posVendaStore.set(, JSON.stringify());
+                    await posVendaStore.set(telefone, JSON.stringify(agendamento));
                     console.log(`📅 Pesquisa de CSAT agendada com sucesso para ${telefone}!`);
                 } catch (e) {
                     console.error('❌ Erro ao salvar agendamento de pós-venda:', e.message);
