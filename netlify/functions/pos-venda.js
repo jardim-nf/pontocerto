@@ -28,7 +28,7 @@ exports.handler = schedule("* * * * *", async (event) => {
     console.log("🚀 INICIANDO JOB DE PÓS-VENDA (CSAT)...");
     
     try {
-        const posVendaStore = getStore('pos_venda');
+        const posVendaStore = getStore({ name: 'pos_venda', siteID: process.env.NETLIFY_SITE_ID, token: process.env.NETLIFY_API_TOKEN });
         const listResult = await posVendaStore.list();
         
         let disparos = 0;

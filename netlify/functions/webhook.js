@@ -48,7 +48,7 @@ async function carregarSessao(phone) {
         // Tenta Netlify Blobs via SDK (pode falhar em alguns ambientes)
         try {
             const { getStore } = require('@netlify/blobs');
-            const store = getStore('conversas');
+            const store = getStore({ name: 'conversas', siteID: process.env.NETLIFY_SITE_ID, token: process.env.NETLIFY_API_TOKEN });
             const dados = await store.get(phone);
             if (dados) {
                 const sessao = JSON.parse(dados);
@@ -83,7 +83,7 @@ async function salvarSessao(phone, sessao) {
     // Tenta salvar nos Blobs também (persistência)
     try {
         const { getStore } = require('@netlify/blobs');
-        const store = getStore('conversas');
+        const store = getStore({ name: 'conversas', siteID: process.env.NETLIFY_SITE_ID, token: process.env.NETLIFY_API_TOKEN });
         await store.set(phone, JSON.stringify(sessao));
         console.log(`💾 Sessão BLOBS salva`);
     } catch (blobErr) {
@@ -528,7 +528,7 @@ exports.handler = async (event) => {
                 
                 try {
                     const { getStore } = require('@netlify/blobs');
-                    const posVendaStore = getStore('pos_venda');
+                    const posVendaStore = getStore({ name: 'pos_venda', siteID: process.env.NETLIFY_SITE_ID, token: process.env.NETLIFY_API_TOKEN });
                     
                     const agendamento = {
                         telefone: telefone,
@@ -552,7 +552,7 @@ exports.handler = async (event) => {
                 console.log(`🚀 COMANDO /disparar_agora ACIONADO MANUAMENTE`);
                 try {
                     const { getStore } = require('@netlify/blobs');
-                    const posVendaStore = getStore('pos_venda');
+                    const posVendaStore = getStore({ name: 'pos_venda', siteID: process.env.NETLIFY_SITE_ID, token: process.env.NETLIFY_API_TOKEN });
                     const listResult = await posVendaStore.list();
                     let disparos = 0;
                     
