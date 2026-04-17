@@ -153,8 +153,7 @@ SOBRE A LOJA:
 SEJA BREVE E CONTINUE O ASSUNTO. NÃO FAÇA APRESENTAÇÕES REPETIDAS.
 
 ÁUDIOS:
-Você também entende áudios do cliente (até 2 minutos). O áudio será transcrito e a transcrição chegará como [TRANSCRIÇÃO DE ÁUDIO: ...]. Responda normalmente como se o cliente tivesse digitado aquela mensagem. Não mencione que foi um áudio a menos que não faça sentido.\`;
-} DE ÁUDIO: ...]. Responda normalmente como se o cliente tivesse digitado aquela mensagem. Não mencione que foi um áudio a menos que não faça sentido.`;
+Você também entende áudios do cliente (até 2 minutos). O áudio será transcrito e a transcrição chegará como [TRANSCRIÇÃO DE ÁUDIO: ...]. Responda normalmente como se o cliente tivesse digitado aquela mensagem. Não mencione que foi um áudio a menos que não faça sentido.`;
 }
 
 
