@@ -534,8 +534,8 @@ exports.handler = async (event) => {
                         telefone: telefone,
                         pushName: body?.pushName || body?.key?.pushName || '',
                         dataAgendamento: Date.now(),
-                        // Data de disparo vai ser em 48h. (Usaremos 48 * 60 * 60 * 1000)
-                        dataDisparo: Date.now() + (48 * 60 * 60 * 1000) 
+                        // PARA TESTE: Disparo em 5 minutos
+                        dataDisparo: Date.now() + (5 * 60 * 1000) 
                     };
                     await posVendaStore.setJSON(telefone, agendamento);
                     console.log(`📅 Pesquisa de CSAT agendada com sucesso para ${telefone}!`);

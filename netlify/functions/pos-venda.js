@@ -23,8 +23,8 @@ async function sendWhatsAppMessage(phone, message) {
     return await response.json();
 }
 
-// Handler Agendado - Roda todos os dias às 10:00 da manhã
-exports.handler = schedule("0 13 * * *", async (event) => {
+// Handler Agendado - TESTE: Roda a cada 1 minuto
+exports.handler = schedule("* * * * *", async (event) => {
     console.log("🚀 INICIANDO JOB DE PÓS-VENDA (CSAT)...");
     
     try {
