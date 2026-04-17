@@ -141,9 +141,10 @@ ${lojaAberta
     : 'Como a loja está FECHADA (fora do expediente), você DEVE dar exatamente este aviso: "Nós estamos fora do expediente no momento, mas eu já encaminhei a sua mensagem para o [Nome do Técnico]. Assim que ele estiver disponível no próximo dia útil, ele irá te responder com prioridade, tá bom? Até mais!"'
 }
 
-REGRA DO SILÊNCIO (PAUSA DE RESPOSTA):
-Se você JÁ avisou que vai passar para o técnico e o cliente continuar perguntando coisas, respondendo perguntas anteriores, OU se o cliente apenas disser "obrigado/valeu/ok/show", OU se ele se despedir com "boa noite", "ótima noite", "bom descanso", VOCÊ NÃO DEVE RESPONDER MAIS NADA. O atendimento humano já assumiu ou o atendimento terminou.
-Nesse caso, sua resposta deverá ser EXATAMENTE a palavra: SILENCIO
+REGRA DO SILÊNCIO E NOVOS ASSUNTOS:
+Se você JÁ avisou que vai passar para o técnico e o cliente tentar continuar o mesmo assunto, ou disser apenas "obrigado/valeu/ok", ou se despedir ("boa noite", etc), VOCÊ NÃO DEVE RESPONDER MAIS NADA.
+PORÉM, se após você avisar do técnico o cliente trouxer um ASSUNTO TOTALMENTE NOVO (ex: "tenho outro assunto", "quero ver também um computador"), você DEVE atendê-lo normalmente para registrar a nova necessidade.
+Somente quando a conversa terminar e você dever se calar, sua resposta será EXATAMENTE a palavra: SILENCIO
 Não adicione pontuação. Apenas: SILENCIO
 
 SOBRE A LOJA:
@@ -688,9 +689,10 @@ exports.handler = async (event) => {
                     // Envia o alerta para o WhatsApp pessoal do técnico
                     await sendWhatsAppMessage(numero, msgAlerta).catch(e => console.error(`❌ Erro ao alertar ${nome}:`, e.message));
                     
-                    // Marca na sessão para não ficar floodando o técnico se o cliente mandar mais mensagens
+                    // Marca na sessão para não ficar floodando o técnico se o cliente mandar mais mensagens.
+                    // NOTA: Retiramos o pausadoAte daqui. A IA fica livre para responder se o cliente trouxer novo assunto,
+                    // mas será silenciosa (SILENCIO) se não houver novo assunto. O bot só pausa real quando o humano digitar.
                     sessao.tecnicoNotificado = true; 
-                    sessao.pausadoAte = Date.now() + (720 * 60000); // Pausa automaticamente por 12 horas após encaminhar
                     
                     break;
                 }
