@@ -520,6 +520,33 @@ exports.handler = async (event) => {
             const lastAsst = [...historicoTemp].reverse().find(m => m.role === 'assistant');
             const isBotEcho = (lastAsst && lastAsst.content.trim() === mensagemTexto);
 
+            // ----------------------------------------------------
+            // TRATAMENTO COMANDO PÓS-VENDA (/entregue)
+            // ----------------------------------------------------
+            if (mensagemTexto.trim().toLowerCase() === '/entregue' && telefone) {
+                console.log(`✅ COMANDO DE PÓS-VENDA: /entregue acionado para ${telefone}`);
+                
+                try {
+                    const { getStore } = require('@netlify/blobs');
+                    const posVendaStore = getStore('pos_venda');
+                    
+                    const agendamento = {
+                        telefone: telefone,
+                        pushName: body?.pushName || body?.key?.pushName || '',
+                        dataAgendamento: Date.now(),
+                        // Data de disparo vai ser em 48h. (Usaremos 48 * 60 * 60 * 1000)
+                        dataDisparo: Date.now() + (48 * 60 * 60 * 1000) 
+                    };
+                    await posVendaStore.setJSON(telefone, agendamento);
+                    console.log(`📅 Pesquisa de CSAT agendada com sucesso para ${telefone}!`);
+                } catch (e) {
+                    console.error('❌ Erro ao salvar agendamento de pós-venda:', e.message);
+                }
+                
+                return { statusCode: 200, body: JSON.stringify({ status: 'ok', message: 'comando_entregue_processado' }) };
+            }
+            // ----------------------------------------------------
+
             if (!isAutoResponse && !isBotEcho && telefone) {
                 console.log(`👨‍💻 TÉCNICO DETECTADO: Uma pessoa respondeu ao cliente ${telefone}. Msg: "${mensagemTexto.substring(0,30)}"`);
                 
