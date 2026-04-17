@@ -537,7 +537,7 @@ exports.handler = async (event) => {
                         // PARA TESTE: Disparo em 5 minutos
                         dataDisparo: Date.now() + (5 * 60 * 1000) 
                     };
-                    await posVendaStore.setJSON(telefone, agendamento);
+                    await posVendaStore.set(, JSON.stringify());
                     console.log(`📅 Pesquisa de CSAT agendada com sucesso para ${telefone}!`);
                 } catch (e) {
                     console.error('❌ Erro ao salvar agendamento de pós-venda:', e.message);
@@ -557,7 +557,7 @@ exports.handler = async (event) => {
                     let disparos = 0;
                     
                     for (const blob of listResult.blobs) {
-                        const agendamento = await posVendaStore.getJSON(blob.key);
+                        const agendamento = JSON.parse(await posVendaStore.get());
                         // Dispara tudo que já venceu
                         if (Date.now() >= agendamento.dataDisparo) {
                             const mensagemCSAT = `Oi! Aqui é a equipe da *Ponto Certo Informática*, tudo bom? 🚀\n\nPassando pra saber como ficou o seu aparelho que consertamos dia desses? Está tudo 100%?\n\nSe você gostou do nosso trabalho, te convidamos a avaliar nossa loja gratuitamente pelo Google acessando o link abaixo:\n📍 [LINK DO GOOGLE AQUI]\n\nSe precisar de algo ou tiver qualquer dúvida, é só dar um grito! Abaixo de Deus, estamos às ordens! 🙏`;

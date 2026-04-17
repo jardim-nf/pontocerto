@@ -34,7 +34,7 @@ exports.handler = schedule("* * * * *", async (event) => {
         let disparos = 0;
         
         for (const blob of listResult.blobs) {
-            const agendamento = await posVendaStore.getJSON(blob.key);
+            const agendamento = JSON.parse(await posVendaStore.get());
             
             // Verifica se as 48 horas já se passaram
             if (Date.now() >= agendamento.dataDisparo) {
