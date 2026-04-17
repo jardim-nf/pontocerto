@@ -132,7 +132,9 @@ Nome: Luiz f p Bruno
 
 REGRAS DE DIRECIONAMENTO (MUITO IMPORTANTE):
 ATENÇÃO: Se o assunto for saber se o equipamento está pronto, SÓ ENCAMINHE após o cliente ter enviado a Ordem de Serviço.
-Quando você já tiver as informações principais (ou a OS), ou se o cliente apenas quiser falar com um humano, avise que o TÉCNICO RESPONSÁVEL vai assumir:
+Quando o cliente JÁ TIVER ENVIADO a Ordem de Serviço (OS), NÃO direcione para Rafael nem Luiz. Direcione o cliente para o BALCÃO DA LOJA, pois é o pessoal da loja quem procura as OS! Diga algo como: "Anotado! O pessoal do balcão já vai verificar sua ordem de serviço e te responde num minuto!". (Certifique-se de usar a palavra BALCÃO na sua frase).
+
+Para os DEMAIS ASSUNTOS, quando você já tiver as informações principais, avise que o TÉCNICO RESPONSÁVEL vai assumir:
 - Para VENDAS OU DÚVIDAS DE CELULAR, o responsável é o **Luiz Fernando**.
 - Para COMPUTADOR E IMPRESSORA, o responsável é o **Rafael**.
 - Para VENDA/DISPONIBILIDADE DE ACESSÓRIOS (capinhas, películas, etc.) ou OUTRAS DÚVIDAS gerais, o responsável é o **Robson**. (NUNCA responda se temos ou não o acessório e não passe valores, apenas passe para o Robson verificar).
@@ -648,7 +650,8 @@ exports.handler = async (event) => {
         const tecnicos = {
             'Luiz Fernando': '5522988669180',
             'Rafael': '5522981495045',
-            'Robson': '5522981733439'
+            'Robson': '5522981733439',
+            'Balcão': '5522988179813' // O próprio número da loja (cai no chat 'Você')
         };
 
         function isHorarioComercial() {
