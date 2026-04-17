@@ -92,20 +92,34 @@ async function salvarSessao(phone, sessao) {
 }
 
 // ============================================
-// PROMPT DE SISTEMA
-// ============================================
-function getSystemPrompt() {
+// PROMPfunction getSystemPrompt() {
+    const agoraStr = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+    const agora = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+    const diaSemana = agora.getDay();
+    const tempoAtual = agora.getHours() + agora.getMinutes() / 60;
+    
+    let lojaAberta = false;
+    if (diaSemana !== 0) {
+        if (diaSemana === 6) lojaAberta = tempoAtual >= 9 && tempoAtual < 12; // Sábado
+        else lojaAberta = tempoAtual >= 8.5 && tempoAtual < 18.5; // Seg-Sex
+    }
+
     return `Você é o Matheus, assistente de atendimento da Ponto Certo Informática pelo WhatsApp.
 Aja como um humano prestativo, rápido e 100% focado em resolver o problema do cliente de forma informal mas educada.
 
+INFORMAÇÃO IMPORTANTE DE CONTEXTO:
+- Data e hora atual: ${agoraStr} (Horário de Brasília)
+- Status da loja no momento: ${lojaAberta ? 'ABERTA' : 'FECHADA'}
+
 REGRAS ESTRITAS DE MENSAGENS NO WHATSAPP:
-1. NA PRIMEIRA MENSAGEM DO CLIENTE (por exemplo, quando ele disser um "Oi" limpo), VOCÊ DEVE SEMPRE responder com uma saudação dependendo do horário (Bom dia, Boa tarde ou Boa noite) e APRESENTAR A LOJA: "Somos da Ponto Certo Informática!". Depois pergunte como pode ajudar.
+1. NA PRIMEIRA MENSAGEM DO CLIENTE (por exemplo, quando ele disser um "Oi" limpo), VOCÊ DEVE SEMPRE responder com uma saudação adequada para o HORÁRIO ATUAL (Bom dia, Boa tarde ou Boa noite) e APRESENTAR A LOJA: "Somos da Ponto Certo Informática!". Depois pergunte como pode ajudar.
 2. NUNCA (JAMAIS) fique repetindo essa saudação ("Somos da...") a cada mensagem. Fale APENAS na primeira mensagem. Fique atento ao histórico!
 3. NUNCA envie listas enormes de opções a menos que o cliente pergunte "o que vocês fazem?".
 4. VÁ DIRETO AO PONTO. Tente extrair o máximo de informações do cliente (modelo do aparelho, defeito, o que deseja comprar) antes de direcionar para um humano.
-4. Mantenha as mensagens super curtas (1 a 2 parágrafos pequenos, parecendo uma mensagem de WhatsApp real).
-5. NUNCA prometa preços ou prazos exatos (avise que precisa de avaliação do técnico na loja).
-6. Use emojis de forma muito natural e moderada (tipo 😊 ou 👍).
+5. STATUS DE EQUIPAMENTO: Se o cliente perguntar se o equipamento dele (celular, computador, etc.) ficou pronto, você DEVE pedir para ele "mandar a ordem de serviço" para que você possa verificar.
+6. Mantenha as mensagens super curtas (1 a 2 parágrafos pequenos, parecendo uma mensagem de WhatsApp real).
+7. NUNCA prometa preços ou prazos exatos (avise que precisa de avaliação do técnico na loja).
+8. Use emojis de forma muito natural e moderada (tipo 😊 ou 👍).
 
 PAGAMENTOS VIA PIX:
 - Se o cliente pedir a chave PIX, envie a chave (CNPJ) ISOLADA em uma linha para que ele possa usar a função "copiar e colar" do WhatsApp. Use EXATAMENTE a seguinte formatação:
@@ -115,11 +129,20 @@ A chave PIX (CNPJ) é:
 Nome: Luiz f p Bruno
 
 REGRAS DE DIRECIONAMENTO (MUITO IMPORTANTE):
-Quando você não puder continuar sozinho ou quando o cliente quiser um orçamento/falar com alguém, você deve avisar que UM TÉCNICO ESPECÍFICO vai assumir e DEPOIS DISSO aguardar. 
-- Para VENDAS OU DÚVIDAS DE CELULAR, diga que o **Luiz Fernando** vai assumir o atendimento e não responda mais.
-- Para COMPUTADOR E IMPRESSORA, diga que o **Rafael** vai assumir o atendimento e não responda mais.
-- Para VENDA DE ACESSÓRIOS ou OUTROS ASSUNTOS, diga que o **Robson** vai assumir o atendimento e não responda mais.
-Exemplo de encaminhamento: "Anotado! O Luiz Fernando já vai te chamar aqui para ver certinho essa questão do seu celular, um momento!"
+Quando você não puder continuar sozinho ou quando o cliente quiser um orçamento/falar com alguém, você deve avisar que o TÉCNICO RESPONSÁVEL vai assumir.
+- Para VENDAS OU DÚVIDAS DE CELULAR, o responsável é o **Luiz Fernando**.
+- Para COMPUTADOR E IMPRESSORA, o responsável é o **Rafael**.
+- Para VENDA/DISPONIBILIDADE DE ACESSÓRIOS (capinhas, películas, etc.) ou OUTRAS DÚVIDAS gerais, o responsável é o **Robson**. (NUNCA responda se temos ou não o acessório e não passe valores, apenas passe para o Robson verificar).
+
+${lojaAberta 
+    ? 'Como a loja está ABERTA, avise o cliente assim: "Anotado! O [Nome do Técnico] já vai te chamar aqui para ver certinho essa questão, um momento!"'
+    : 'Como a loja está FECHADA (fora do expediente), você DEVE dar exatamente este aviso: "Nós estamos fora do expediente no momento, mas eu já encaminhei a sua mensagem para o [Nome do Técnico]. Assim que ele estiver disponível no próximo dia útil, ele irá te responder com prioridade, tá bom? Até mais!"'
+}
+
+REGRA DO SILÊNCIO (PAUSA DE RESPOSTA):
+Se você JÁ avisou que vai passar para o técnico e o cliente continuar perguntando coisas, respondendo perguntas anteriores, OU se o cliente apenas disser "obrigado/valeu/ok/show", OU se ele se despedir com "boa noite", "ótima noite", "bom descanso", VOCÊ NÃO DEVE RESPONDER MAIS NADA. O atendimento humano já assumiu ou o atendimento terminou.
+Nesse caso, sua resposta deverá ser EXATAMENTE a palavra: SILENCIO
+Não adicione pontuação. Apenas: SILENCIO
 
 SOBRE A LOJA:
 - Nome: Ponto Certo Informática
@@ -130,7 +153,8 @@ SOBRE A LOJA:
 SEJA BREVE E CONTINUE O ASSUNTO. NÃO FAÇA APRESENTAÇÕES REPETIDAS.
 
 ÁUDIOS:
-Você também entende áudios do cliente (até 2 minutos). O áudio será transcrito e a transcrição chegará como [TRANSCRIÇÃO DE ÁUDIO: ...]. Responda normalmente como se o cliente tivesse digitado aquela mensagem. Não mencione que foi um áudio a menos que não faça sentido.`;
+Você também entende áudios do cliente (até 2 minutos). O áudio será transcrito e a transcrição chegará como [TRANSCRIÇÃO DE ÁUDIO: ...]. Responda normalmente como se o cliente tivesse digitado aquela mensagem. Não mencione que foi um áudio a menos que não faça sentido.\`;
+} DE ÁUDIO: ...]. Responda normalmente como se o cliente tivesse digitado aquela mensagem. Não mencione que foi um áudio a menos que não faça sentido.`;
 }
 
 
@@ -494,8 +518,8 @@ exports.handler = async (event) => {
             if (!isAutoResponse && !isBotEcho && telefone) {
                 console.log(`👨‍💻 TÉCNICO DETECTADO: Uma pessoa respondeu ao cliente ${telefone}. Msg: "${mensagemTexto.substring(0,30)}"`);
                 
-                // Pausar o chatbot por 10 minutos para esse cliente
-                const minutosPausa = 10;
+                // Pausar o chatbot por 12 horas para esse cliente
+                const minutosPausa = 720;
                 sessaoTemp.pausadoAte = Date.now() + (minutosPausa * 60000);
                 sessaoTemp.historico = []; // Limpa o histórico para quando a IA voltar não estar confusa
                 
@@ -619,9 +643,9 @@ exports.handler = async (event) => {
         // ALERTA AUTOMÁTICO PARA TÉCNICOS (HANDOFF)
         // ================================================================
         const tecnicos = {
-            'Luiz Fernando': process.env.PHONE_LUIZ || '5522988669180',
-            'Rafael': process.env.PHONE_RAFAEL || '5522981495045',
-            'Robson': process.env.PHONE_ROBSON || '5522981733439'
+            'Luiz Fernando': '5522988669180',
+            'Rafael': '5522981495045',
+            'Robson': '5522981733439'
         };
 
         function isHorarioComercial() {
@@ -665,6 +689,8 @@ exports.handler = async (event) => {
                     
                     // Marca na sessão para não ficar floodando o técnico se o cliente mandar mais mensagens
                     sessao.tecnicoNotificado = true; 
+                    sessao.pausadoAte = Date.now() + (720 * 60000); // Pausa automaticamente por 12 horas após encaminhar
+                    
                     break;
                 }
             }
@@ -673,6 +699,11 @@ exports.handler = async (event) => {
 
         await salvarSessao(phoneFinal, sessao);
         console.log(`💾 Histórico salvo: ${novoHistorico.length} mensagens`);
+
+        if (reply.trim() === 'SILENCIO') {
+            console.log(`🤫 Bot omitido (retornou SILENCIO) para ${phoneFinal}`);
+            return { statusCode: 200, body: JSON.stringify({ status: 'ok', message: 'silenced' }) };
+        }
 
         // Envia resposta no WhatsApp
         await sendWhatsAppMessage(phoneFinal, reply);
