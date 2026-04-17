@@ -132,7 +132,7 @@ Nome: Luiz f p Bruno
 
 REGRAS DE DIRECIONAMENTO (MUITO IMPORTANTE):
 ATENÇÃO: Se o assunto for saber se o equipamento está pronto, SÓ ENCAMINHE após o cliente ter enviado a Ordem de Serviço.
-Quando o cliente JÁ TIVER ENVIADO a Ordem de Serviço (OS), NÃO direcione para Rafael nem Luiz. Responda EXATAMENTE com a seguinte frase: "Iremos verificar no nosso sistema e retornaremos jaja"
+Quando o cliente JÁ TIVER ENVIADO a Ordem de Serviço (OS), NÃO direcione para Rafael nem Luiz. Responda EXATAMENTE com a seguinte frase: "Vou verificar no nosso sistema e já já te retorno com mais informações"
 
 Para os DEMAIS ASSUNTOS, quando você já tiver as informações principais, avise que o TÉCNICO RESPONSÁVEL vai assumir:
 - Para VENDAS OU DÚVIDAS DE CELULAR, o responsável é o **Luiz Fernando**.
@@ -651,7 +651,7 @@ exports.handler = async (event) => {
             'Luiz Fernando': '5522988669180',
             'Rafael': '5522981495045',
             'Robson': '5522981733439',
-            'Iremos verificar no nosso sistema': '5522988179813' // O próprio número da loja (cai no chat 'Você' acionado pela frase exata)
+            'Vou verificar no nosso sistema': '5522988179813' // O próprio número da loja (cai no chat 'Você' acionado pela frase exata)
         };
 
         function isHorarioComercial() {
