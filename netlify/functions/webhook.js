@@ -648,10 +648,10 @@ exports.handler = async (event) => {
         // ALERTA AUTOMÁTICO PARA TÉCNICOS (HANDOFF)
         // ================================================================
         const tecnicos = {
-            'Luiz Fernando': '5522988669180',
-            'Rafael': '5522981495045',
-            'Robson': '5522981733439',
-            'Vou verificar no nosso sistema': '5522988179813' // O próprio número da loja (cai no chat 'Você' acionado pela frase exata)
+            'Luiz Fernando': ['5522988669180'],
+            'Rafael': ['5522981495045'],
+            'Robson': ['5522981733439'],
+            'Vou verificar no nosso sistema': ['5522988669180', '5522981495045', '5522981733439'] // Dispara para os 3
         };
 
         function isHorarioComercial() {
@@ -676,26 +676,26 @@ exports.handler = async (event) => {
         const lojaAberta = isHorarioComercial();
 
         if (!sessao.tecnicoNotificado) {
-            for (const [nome, numero] of Object.entries(tecnicos)) {
-                // Se o bot mencionou o nome do técnico na resposta
+            for (const [nome, numeros] of Object.entries(tecnicos)) {
+                // Se o bot mencionou a string de ativação na resposta
                 if (reply.includes(nome)) {
-                    
-                    // Condição de Horário: Somente dono (Luiz Fernando) recebe fora do expediente
-                    if (nome !== 'Luiz Fernando' && !lojaAberta) {
-                        console.log(`🔇 Alerta ignorado para ${nome}: Fora do horário de expediente da loja.`);
-                        break; 
-                    }
-
-                    console.log(`🔔 Alertando técnico ${nome} no número ${numero}...`);
                     
                     const msgAlerta = `🚨 *PONTO CERTO - NOVO ATENDIMENTO* 🚨\n\nO robô acabou de encaminhar um cliente para você!\n\n🗣️ *Cliente:* ${pushName}\n📱 *Número:* ${phoneFinal}\n💬 *O cliente disse:* "${mensagemTexto}"\n\n⚠️ _Por favor, responda o cliente no WhatsApp oficial da loja!_`;
                     
-                    // Envia o alerta para o WhatsApp pessoal do técnico
-                    await sendWhatsAppMessage(numero, msgAlerta).catch(e => console.error(`❌ Erro ao alertar ${nome}:`, e.message));
+                    for (const num of numeros) {
+                        // Condição de Horário: Somente dono (Luiz Fernando, final 9180) recebe fora do expediente
+                        if (num !== '5522988669180' && !lojaAberta) {
+                            console.log(`🔇 Alerta ignorado para o numero ${num}: Fora do horário de expediente da loja.`);
+                            continue; 
+                        }
+
+                        console.log(`🔔 Alertando sobre ${nome} no número ${num}...`);
+                        
+                        // Envia o alerta para o WhatsApp
+                        await sendWhatsAppMessage(num, msgAlerta).catch(e => console.error(`❌ Erro ao alertar ${num}:`, e.message));
+                    }
                     
-                    // Marca na sessão para não ficar floodando o técnico se o cliente mandar mais mensagens.
-                    // NOTA: Retiramos o pausadoAte daqui. A IA fica livre para responder se o cliente trouxer novo assunto,
-                    // mas será silenciosa (SILENCIO) se não houver novo assunto. O bot só pausa real quando o humano digitar.
+                    // Marca na sessão para não ficar floodando
                     sessao.tecnicoNotificado = true; 
                     
                     break;
