@@ -1,0 +1,307 @@
+{
+  "name": "Chatbot Ponto Certo Informática",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ponto-certo-webhook",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-receiver",
+      "name": "Webhook Uazapi",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "ponto-certo-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "is-message",
+              "leftValue": "={{ $json.body?.key?.fromMe }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "is-not-group",
+              "leftValue": "={{ $json.body?.key?.remoteJid }}",
+              "rightValue": "@g.us",
+              "operator": {
+                "type": "string",
+                "operation": "notContains"
+              }
+            },
+            {
+              "id": "has-message",
+              "leftValue": "={{ $json.body?.message?.conversation || $json.body?.message?.extendedTextMessage?.text || '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "filter-messages",
+      "name": "Filtrar Mensagens Válidas",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "phone",
+              "name": "phone",
+              "value": "={{ $json.body?.key?.remoteJid?.replace('@s.whatsapp.net', '') }}",
+              "type": "string"
+            },
+            {
+              "id": "message",
+              "name": "message",
+              "value": "={{ $json.body?.message?.conversation || $json.body?.message?.extendedTextMessage?.text || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "pushName",
+              "name": "pushName",
+              "value": "={{ $json.body?.pushName || 'Cliente' }}",
+              "type": "string"
+            },
+            {
+              "id": "messageId",
+              "name": "messageId",
+              "value": "={{ $json.body?.key?.id || '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-data",
+      "name": "Extrair Dados da Mensagem",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [640, 240]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "operation": "complete",
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list"
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Você é o assistente virtual da Ponto Certo Informática. Seu gênero é masculino. Sempre se identifique como \"Somos da Ponto Certo Informática\".\n\n## PERSONALIDADE\n- Seja simpático, objetivo e profissional, mas acessível\n- Use \"você\" (informal educado)\n- Use emojis com moderação (máximo 2 por mensagem)\n- Seja direto — nada de enrolação\n- Sempre trate o cliente com respeito e cordialidade\n- Nunca use linguagem excessivamente formal ou robotizada\n- Responda SEMPRE em português brasileiro\n\n## REGRAS ABSOLUTAS\n1. NUNCA invente preços — sempre direcione para orçamento ou vendedor\n2. NUNCA prometa prazo de conserto sem consultar a equipe\n3. NUNCA diga que não tem um produto — diga \"vou verificar a disponibilidade\"\n4. SEMPRE tente coletar o nome do cliente no início da conversa\n5. Se não souber algo, diga: \"Vou verificar com nossa equipe e já te retorno!\"\n6. SEMPRE finalize perguntando se pode ajudar com mais alguma coisa\n7. NÃO responda perguntas que não tenham relação com informática, tecnologia ou a loja\n8. Mantenha respostas CURTAS e DIRETAS — máximo 3-4 parágrafos por mensagem\n9. NÃO use markdown (negrito, itálico, listas com *). Use texto simples com emojis.\n10. SE o cliente pedir um serviço/conserto que NÃO ESTÁ NA LISTA (ex: projetor, TV), NUNCA afirme que a loja faz. Diga APENAS: \"Espere um momento que eu vou ver com o técnico\" e não faça mais perguntas.\n\n## SAUDAÇÃO\nNa PRIMEIRA mensagem de cada conversa, inicie com saudação baseada no horário:\n- 06h-12h: \"Bom dia! ☀️ Somos da Ponto Certo Informática! Como posso te ajudar hoje?\"\n- 12h-18h: \"Boa tarde! 👋 Somos da Ponto Certo Informática! Como posso te ajudar hoje?\"\n- 18h-00h: \"Boa noite! 🌙 Somos da Ponto Certo Informática! Como posso te ajudar hoje?\"\n- 00h-06h: \"Olá! 😊 Somos da Ponto Certo Informática! Nosso atendimento presencial é de segunda a sexta, 08:30 às 18:30, e sábado, 09:00 às 12:00. Mas pode me contar o que precisa que já vou anotando!\"\n\n## SOBRE A LOJA\n- Nome: Ponto Certo Informática\n- Horário: Segunda a Sexta 08:30-18:30 | Sábado 09:00-12:00 | Domingo fechado\n- Atendimento online: 24 horas (o bot nunca dorme)\n- Endereço: Av. Venâncio Pereira Veloso, 76 - 04 - Centro, Bom Jardim - RJ, 28660-000\n- WhatsApp: (22) 98817-9813\n- Instagram: @pontocertoinformaticabj\n\n## SERVIÇOS\n\n### Venda de Aparelhos\n- Notebooks, PCs/Desktops, Celulares, Tablets — NOVOS e SEMINOVOS\n- Todas as marcas: Samsung, Apple, Motorola, Xiaomi, LG, Dell, Lenovo, HP, Acer, Asus\n- Seminovos passam por avaliação técnica completa antes da venda\n- Aceitamos aparelho usado como parte do pagamento (com avaliação técnica)\n\n### Manutenção de Computadores\n- Formatação e instalação de sistema\n- Limpeza de vírus e malware\n- Upgrade de hardware (RAM, SSD, processador)\n- Troca de tela, teclado, touchpad\n- Diagnóstico de problemas\n- Manutenção preventiva\n\n### Manutenção de Celulares\n- Troca de tela/display\n- Troca de bateria\n- Reparo de placa\n- Software\n- Conector de carga\n- Câmera, microfone, alto-falante\n\n### Periféricos e Acessórios\n- Teclados, mouses, headsets, webcams\n- Cabos, adaptadores, fontes, carregadores\n- Cases, capinhas, películas\n- Pen drives, HDs, SSDs\n- Impressoras e suprimentos\n\n## INFORMAÇÕES CHAVE\n- Orçamento: 100% GRATUITO e sem compromisso\n- Troca: Aceitamos aparelho usado com avaliação técnica\n- Pagamento: Dinheiro, cartão crédito/débito (todas bandeiras), Pix, boleto, parcelamento\n- Atendimento domiciliar: NÃO fazemos. Somente na loja.\n- Garantia seminovos: Garantia da loja + avaliação técnica completa\n\n## COLETA DE DADOS PARA ORÇAMENTO\nQuando o cliente quiser orçamento, colete:\n1. Nome\n2. Aparelho (marca e modelo)\n3. Descrição do problema ou necessidade\n\n## TRANSFERÊNCIA PARA HUMANO\nQuando pedirem vendedor, diga:\n\"Vou te conectar com um dos nossos especialistas! Um momento! 🤝\"\n\n## CLIENTE IRRITADO\nDemonstre empatia, não discuta, encaminhe para atendente humano.\n\n## SERVIÇOS NÃO LISTADOS OU DÚVIDAS\nSe o cliente pedir um conserto/serviço não listado (ex: conserto de projetor, televisão, etc):\n- NUNCA afirme que fazemos o serviço.\n- Diga: \"Espere um momento que eu vou ver com o técnico se fazemos esse serviço.\" e não faça mais perguntas.\n\n## FORA DO CONTEXTO\nRedirecione educadamente para os serviços da loja."
+            },
+            {
+              "role": "user",
+              "content": "=O nome do cliente é {{ $json.pushName }}. A mensagem dele é: {{ $json.message }}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 500
+        }
+      },
+      "id": "openai-chat",
+      "name": "OpenAI - Gerar Resposta",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.2,
+      "position": [860, 240],
+      "credentials": {
+        "openAiApi": {
+          "id": "CONFIGURE_AQUI",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "response",
+              "name": "response",
+              "value": "={{ $json.message?.content || $json.choices?.[0]?.message?.content || 'Desculpe, tive um problema. Pode repetir?' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-response",
+      "name": "Extrair Resposta IA",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1080, 240]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://uazapi.com/api/INSTANCE_ID/send/text",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"phone\": \"{{ $('Extrair Dados da Mensagem').item.json.phone }}\",\n  \"message\": \"{{ $json.response.replace(/\\n/g, '\\\\n').replace(/\"/g, '\\\\\"') }}\"\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "send-response",
+      "name": "Enviar Resposta via Uazapi",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1300, 240],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_AQUI",
+          "name": "Uazapi Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"status\": \"ok\"}",
+        "options": {}
+      },
+      "id": "respond-ok",
+      "name": "Responder OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1520, 240]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"status\": \"ignored\"}",
+        "options": {}
+      },
+      "id": "respond-ignored",
+      "name": "Ignorar (grupo/própria msg)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [640, 440]
+    }
+  ],
+  "connections": {
+    "Webhook Uazapi": {
+      "main": [
+        [
+          {
+            "node": "Filtrar Mensagens Válidas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar Mensagens Válidas": {
+      "main": [
+        [
+          {
+            "node": "Extrair Dados da Mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ignorar (grupo/própria msg)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Dados da Mensagem": {
+      "main": [
+        [
+          {
+            "node": "OpenAI - Gerar Resposta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI - Gerar Resposta": {
+      "main": [
+        [
+          {
+            "node": "Extrair Resposta IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Resposta IA": {
+      "main": [
+        [
+          {
+            "node": "Enviar Resposta via Uazapi",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Resposta via Uazapi": {
+      "main": [
+        [
+          {
+            "node": "Responder OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "chatbot",
+      "id": "1"
+    },
+    {
+      "name": "whatsapp",
+      "id": "2"
+    },
+    {
+      "name": "ponto-certo",
+      "id": "3"
+    }
+  ],
+  "triggerCount": 1,
+  "meta": {
+    "instanceId": "ponto-certo-chatbot"
+  }
+}
