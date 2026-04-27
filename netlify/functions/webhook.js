@@ -578,8 +578,8 @@ exports.handler = async (event) => {
             if (!isAutoResponse && !isBotEcho && telefone) {
                 console.log(`👨‍💻 TÉCNICO DETECTADO: Uma pessoa respondeu ao cliente ${telefone}. Msg: "${mensagemTexto.substring(0,30)}"`);
                 
-                // Pausar o chatbot por 10 minutos para esse cliente
-                const minutosPausa = 10;
+                // Pausar o chatbot por 60 minutos para esse cliente
+                const minutosPausa = 60;
                 sessaoTemp.pausadoAte = Date.now() + (minutosPausa * 60000);
                 sessaoTemp.historico = []; // Limpa o histórico para quando a IA voltar não estar confusa
                 
