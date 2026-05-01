@@ -664,6 +664,30 @@ exports.handler = async (event) => {
         const historico = sessao.historico || [];
         console.log(`💾 Histórico carregado: ${historico.length} mensagens anteriores`);
 
+        // --- AVISO DE FERIADO TEMPORÁRIO ---
+        const reply = "Olá! Tudo bem? 🌟 Hoje estamos em um recesso de feriado, então nosso atendimento está pausado. Mas não se preocupe, sua mensagem está registrada e amanhã no primeiro horário daremos andamento à sua solicitação! Agradecemos muito a compreensão. 😊";
+        
+        // Evitar flood: só manda se a última mensagem do bot não foi essa
+        const lastAsst = [...historico].reverse().find(m => m.role === 'assistant');
+        if (!lastAsst || lastAsst.content !== reply) {
+            sessao.historico = [
+                ...historico,
+                { role: 'user', content: mensagemTexto },
+                { role: 'assistant', content: reply }
+            ];
+            await salvarSessao(phoneFinal, sessao);
+            await sendWhatsAppMessage(phoneFinal, reply);
+            console.log(`✅ Mensagem de feriado enviada para ${phoneFinal}`);
+        } else {
+            console.log(`⏭️ Mensagem de feriado já enviada recentemente para ${phoneFinal}`);
+        }
+        
+        return {
+            statusCode: 200,
+            body: JSON.stringify({ status: 'ok' }),
+        };
+        // -----------------------------------
+
         // Montar mensagens para OpenAI (system + histórico + nova mensagem)
         const messagesParaIA = [
             { role: 'system', content: getSystemPrompt() },
