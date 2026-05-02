@@ -190,7 +190,6 @@ Você também consegue entender áudios do cliente (até 2 minutos). O áudio se
 // PROCESSAR MENSAGEM COM OPENAI
 // ============================================
 async function processMessage(phone, pushName, userMessage) {
-    return "Olá! Tudo bem? 🌟 Hoje estamos em um recesso de feriado, então nosso atendimento está pausado. Mas não se preocupe, sua mensagem está registrada e amanhã no primeiro horário daremos andamento à sua solicitação! Agradecemos muito a compreensão. 😊";
     const conv = getConversation(phone);
 
     // Adiciona mensagem do usuário ao histórico

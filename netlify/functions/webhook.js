@@ -557,7 +557,9 @@ exports.handler = async (event) => {
                     let disparos = 0;
                     
                     for (const blob of listResult.blobs) {
-                        const agendamento = JSON.parse(await posVendaStore.get());
+                        const agendamentoData = await posVendaStore.get(blob.key);
+                        if (!agendamentoData) continue;
+                        const agendamento = JSON.parse(agendamentoData);
                         // Dispara tudo que já venceu
                         if (Date.now() >= agendamento.dataDisparo) {
                             const mensagemCSAT = `Oi! Aqui é a equipe da *Ponto Certo Informática*, tudo bom? 🚀\n\nPassando pra saber como ficou o seu aparelho que consertamos dia desses? Está tudo 100%?\n\nSe você gostou do nosso trabalho, te convidamos a avaliar nossa loja gratuitamente pelo Google acessando o link abaixo:\n📍 [LINK DO GOOGLE AQUI]\n\nSe precisar de algo ou tiver qualquer dúvida, é só dar um grito! Abaixo de Deus, estamos às ordens! 🙏`;
@@ -664,28 +666,35 @@ exports.handler = async (event) => {
         const historico = sessao.historico || [];
         console.log(`💾 Histórico carregado: ${historico.length} mensagens anteriores`);
 
-        // --- AVISO DE FERIADO TEMPORÁRIO ---
-        const reply = "Olá! Tudo bem? 🌟 Hoje estamos em um recesso de feriado, então nosso atendimento está pausado. Mas não se preocupe, sua mensagem está registrada e amanhã no primeiro horário daremos andamento à sua solicitação! Agradecemos muito a compreensão. 😊";
+        // --- AVISO DE FERIADO TEMPORÁRIO (DESATIVADO) ---
+        /*
+        const dataBR = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+        const isFeriado = dataBR.getDate() === 1 && dataBR.getMonth() === 4; // 1 de Maio (mês 4 é maio no JS)
         
-        // Evitar flood: só manda se a última mensagem do bot não foi essa
-        const lastAsst = [...historico].reverse().find(m => m.role === 'assistant');
-        if (!lastAsst || lastAsst.content !== reply) {
-            sessao.historico = [
-                ...historico,
-                { role: 'user', content: mensagemTexto },
-                { role: 'assistant', content: reply }
-            ];
-            await salvarSessao(phoneFinal, sessao);
-            await sendWhatsAppMessage(phoneFinal, reply);
-            console.log(`✅ Mensagem de feriado enviada para ${phoneFinal}`);
-        } else {
-            console.log(`⏭️ Mensagem de feriado já enviada recentemente para ${phoneFinal}`);
+        if (isFeriado) {
+            const reply = "Olá! Tudo bem? 🌟 Hoje estamos em um recesso de feriado, então nosso atendimento está pausado. Mas não se preocupe, sua mensagem está registrada e amanhã no primeiro horário daremos andamento à sua solicitação! Agradecemos muito a compreensão. 😊";
+            
+            // Evitar flood: só manda se a última mensagem do bot não foi essa
+            const lastAsst = [...historico].reverse().find(m => m.role === 'assistant');
+            if (!lastAsst || lastAsst.content !== reply) {
+                sessao.historico = [
+                    ...historico,
+                    { role: 'user', content: mensagemTexto },
+                    { role: 'assistant', content: reply }
+                ];
+                await salvarSessao(phoneFinal, sessao);
+                await sendWhatsAppMessage(phoneFinal, reply);
+                console.log(`✅ Mensagem de feriado enviada para ${phoneFinal}`);
+            } else {
+                console.log(`⏭️ Mensagem de feriado já enviada recentemente para ${phoneFinal}`);
+            }
+            
+            return {
+                statusCode: 200,
+                body: JSON.stringify({ status: 'ok' }),
+            };
         }
-        
-        return {
-            statusCode: 200,
-            body: JSON.stringify({ status: 'ok' }),
-        };
+        */
         // -----------------------------------
 
         // Montar mensagens para OpenAI (system + histórico + nova mensagem)
